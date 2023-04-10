@@ -11,13 +11,21 @@
 #define __CHARACTER_H
 
 typedef struct node_s node_t;
+typedef struct character_renderer_s character_renderer_t;
 
+#include <stdlib.h>
+#include <math.h>
+#include "client/common.h"
+#include "timer/timer.h"
+#include "window/window.h"
+#include "window/input.h"
 #include "character_renderer.h"
 #include "map/map_renderer.h"
 #include "client/game_data.h"
 #include "window/animation.h"
 #include "window/animation_states.h"
 #include "game/game.h"
+#include "character_types.h"
 
 /**
  * @brief Structure contenant les données d'une troupe

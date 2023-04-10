@@ -10,6 +10,8 @@
 #ifndef __GAME_DATA_SERIALIZATION_H
 #define __GAME_DATA_SERIALIZATION_H
 
+#include <stdio.h>
+#include "common.h"
 #include "window/window.h"
 #include "game_data.h"
 #include "map_data_serialization.h"

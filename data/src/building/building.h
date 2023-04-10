@@ -12,6 +12,14 @@
 
 typedef struct client_game_data_s client_game_data_t;
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include "client/common.h"
+#include "client/game_data_serialization.h"
+#include "timer/timer.h"
+#include "window/window.h"
+#include "window/input.h"
 #include "building_renderer.h"
 #include "map/map_renderer.h"
 #include "client/game_data.h"

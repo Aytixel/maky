@@ -10,6 +10,7 @@
 #ifndef __BUILDING_HUD_H
 #define __BUILDING_HUD_H
 
+#include "building_renderer.h"
 #include "client/game_data.h"
 #include "window/input.h"
 

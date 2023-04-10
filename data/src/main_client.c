@@ -23,6 +23,7 @@
 #include "client/game_data_serialization.h"
 #include "game/hud.h"
 #include "character/character_hud.h"
+#include "packet/client_packet.h"
 
 int running = 1;
 

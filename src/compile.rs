@@ -8,7 +8,7 @@ use std::{
 
 use blake3::Hash;
 
-use crate::{Args, Config};
+use crate::{find_c_from_h, Args, Config};
 
 pub fn compile(
     args: &Args,
@@ -18,9 +18,9 @@ pub fn compile(
     h_c_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
     hash_hashmap: &mut HashMap<PathBuf, Hash>,
     new_hash_hashmap: &mut HashMap<PathBuf, Hash>,
+    new_hash_hashmap_clone: &HashMap<PathBuf, Hash>,
 ) -> io::Result<()> {
     let mut file_to_compile = HashMap::new();
-    let new_hash_hashmap_clone = new_hash_hashmap.clone();
 
     for new_hash in new_hash_hashmap_clone.clone() {
         let extension = new_hash.0.extension().unwrap_or_default();
@@ -116,35 +116,4 @@ pub fn compile(
     }
 
     Ok(())
-}
-
-fn find_c_from_h(
-    file: &Path,
-    h_h_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
-    h_c_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
-    new_hash_hashmap_clone: &HashMap<PathBuf, Hash>,
-    file_to_compile: &mut HashMap<PathBuf, Hash>,
-    already_explored: &mut HashSet<PathBuf>,
-) {
-    if !already_explored.contains(file) {
-        already_explored.insert(file.to_path_buf());
-
-        if let Some(files) = h_c_link.get(file) {
-            for file in files.iter() {
-                file_to_compile.insert(file.to_path_buf(), new_hash_hashmap_clone[file]);
-            }
-        }
-        if let Some(files) = h_h_link.get(file) {
-            for file in files.clone() {
-                find_c_from_h(
-                    &file,
-                    h_h_link,
-                    h_c_link,
-                    new_hash_hashmap_clone,
-                    file_to_compile,
-                    already_explored,
-                );
-            }
-        }
-    }
 }

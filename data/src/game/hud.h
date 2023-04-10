@@ -6,9 +6,12 @@
  * @date 27/03/2023
  *
  */
+
 #ifndef __GAME_HUD_H
 #define __GAME_HUD_H
 
+#include "client/common.h"
+#include "client/game_state.h"
 #include "window/window.h"
 #include "window/input.h"
 #include "socket/client.h"
