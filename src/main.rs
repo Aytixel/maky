@@ -1,3 +1,4 @@
+mod compile;
 mod config;
 
 use std::{
@@ -5,7 +6,6 @@ use std::{
     fs::{create_dir, read_dir, read_to_string},
     io,
     path::{Path, PathBuf},
-    process::Command,
 };
 
 use blake3::{hash, Hash};
@@ -13,11 +13,14 @@ use clap::{command, Parser};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::config::{load_hash_file, save_hash_file};
+use crate::{
+    compile::compile,
+    config::{load_hash_file, save_hash_file},
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-struct Args {
+pub struct Args {
     /// Maky config file
     #[arg(short, long, default_value_t = ("./Maky.toml").to_string())]
     file: String,
@@ -40,7 +43,7 @@ fn default_objects() -> PathBuf {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Config {
+pub struct Config {
     #[serde(default = "default_binaries")]
     #[serde(alias = "bin")]
     binaries: PathBuf,
@@ -85,9 +88,6 @@ fn main() -> io::Result<()> {
             create_dir(objects_dir_path.clone())?;
         }
 
-        let mut hash_hashmap = load_hash_file(config_dir_path);
-        let mut new_hash_hashmap = HashMap::new();
-
         config
             .includes
             .push(config_dir_path.join(config.sources.clone()));
@@ -95,6 +95,8 @@ fn main() -> io::Result<()> {
         println!("{:#?}", args);
         println!("{:#?}", config);
 
+        let mut hash_hashmap = load_hash_file(config_dir_path);
+        let mut new_hash_hashmap = HashMap::new();
         let mut h_h_link = HashMap::new();
         let mut h_c_link = HashMap::new();
 
@@ -108,78 +110,15 @@ fn main() -> io::Result<()> {
 
         save_hash_file(config_dir_path, &new_hash_hashmap)?;
 
-        println!("h_h_link : {:#?}", h_h_link);
-        println!("h_c_link : {:#?}", h_c_link);
-
-        let mut file_to_compile = HashMap::new();
-        let new_hash_hashmap_clone = new_hash_hashmap.clone();
-
-        for new_hash in new_hash_hashmap_clone.clone() {
-            let extension = new_hash.0.extension().unwrap_or_default();
-
-            if let Some(hash) = hash_hashmap.get(&new_hash.0) {
-                if &new_hash.1 == hash
-                    && ((extension == "c"
-                        && objects_dir_path
-                            .join(new_hash.1.to_hex().as_str())
-                            .is_file())
-                        || extension == "h")
-                {
-                    new_hash_hashmap.remove(&new_hash.0);
-                    hash_hashmap.remove(&new_hash.0);
-                    continue;
-                }
-            }
-
-            if extension == "c" {
-                new_hash_hashmap.remove(&new_hash.0);
-                file_to_compile.insert(new_hash.0, new_hash.1);
-            }
-        }
-
-        let mut already_explored = HashSet::new();
-
-        for new_hash in new_hash_hashmap.iter() {
-            find_c_from_h(
-                new_hash.0,
-                &mut h_h_link,
-                &mut h_c_link,
-                &new_hash_hashmap_clone,
-                &mut file_to_compile,
-                &mut already_explored,
-            );
-        }
-
-        println!("{:#?}", new_hash_hashmap);
-        println!("{:#?}", file_to_compile);
-
-        let mut commands = vec![];
-
-        for file in file_to_compile {
-            let mut command = Command::new("gcc");
-
-            if !args.release {
-                command.arg("-g").arg("-Wall");
-            }
-
-            for include in config.includes.iter() {
-                command.arg("-I").arg(include);
-            }
-
-            commands.push(
-                command
-                    .arg("-c")
-                    .arg(file.0)
-                    .arg("-o")
-                    .arg(objects_dir_path.join(file.1.to_hex().as_str()))
-                    .spawn()
-                    .unwrap(),
-            );
-        }
-
-        for command in commands.iter_mut() {
-            command.wait().unwrap();
-        }
+        compile(
+            &args,
+            &config,
+            &objects_dir_path,
+            &mut h_h_link,
+            &mut h_c_link,
+            &mut hash_hashmap,
+            &mut new_hash_hashmap,
+        )?;
 
         return Ok(());
     }
@@ -187,37 +126,6 @@ fn main() -> io::Result<()> {
     eprintln!("No config file found !");
 
     return Ok(());
-}
-
-fn find_c_from_h(
-    file: &Path,
-    h_h_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
-    h_c_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
-    new_hash_hashmap_clone: &HashMap<PathBuf, Hash>,
-    file_to_compile: &mut HashMap<PathBuf, Hash>,
-    already_explored: &mut HashSet<PathBuf>,
-) {
-    if !already_explored.contains(file) {
-        already_explored.insert(file.to_path_buf());
-
-        if let Some(files) = h_c_link.get(file) {
-            for file in files.iter() {
-                file_to_compile.insert(file.to_path_buf(), new_hash_hashmap_clone[file]);
-            }
-        }
-        if let Some(files) = h_h_link.get(file) {
-            for file in files.clone() {
-                find_c_from_h(
-                    &file,
-                    h_h_link,
-                    h_c_link,
-                    new_hash_hashmap_clone,
-                    file_to_compile,
-                    already_explored,
-                );
-            }
-        }
-    }
 }
 
 fn scan_dir(
