@@ -17,38 +17,50 @@ pub fn link(
     binaries_dir_path: &Path,
     objects_dir_path: &Path,
     main_hashset: &mut HashSet<PathBuf>,
-    h_h_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
     h_c_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
     c_h_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
     new_hash_hashmap_clone: &HashMap<PathBuf, Hash>,
 ) {
-    let mut h_c_link_filtered = filter_h_c_link(h_c_link);
+    let h_c_link_filtered = filter_h_c_link(h_c_link);
     let mut commands: Vec<Child> = vec![];
 
-    println!("{:#?}", h_c_link_filtered.len());
+    print!("{} file", main_hashset.len());
+
+    if main_hashset.len() > 1 {
+        print!("s");
+    }
+
+    print!(" to link");
+
+    if main_hashset.len() > 0 {
+        println!(" :");
+    } else {
+        println!(".");
+    }
 
     for main_file in main_hashset.iter() {
-        println!("{}", &main_file.to_string_lossy());
-
-        let mut file_to_compile = HashSet::new();
-        let mut already_explored = HashSet::new();
+        let mut c_file_to_compile = HashSet::new();
+        let mut already_explored_h = HashSet::new();
 
         for h_file in c_h_link[main_file].clone() {
-            find_c(
-                config,
-                objects_dir_path,
-                &h_file,
-                h_h_link,
-                &mut h_c_link_filtered,
-                new_hash_hashmap_clone,
-                &mut file_to_compile,
-                &mut already_explored,
-            );
+            find_h(config, &h_file, &mut already_explored_h);
+
+            already_explored_h.insert(h_file);
         }
 
-        drop(already_explored);
+        for h_file in already_explored_h.iter() {
+            if let Some(c_file) = h_c_link_filtered.get(h_file) {
+                c_file_to_compile.extend(c_file);
+            }
+        }
 
-        println!("{:#?}", file_to_compile);
+        if c_file_to_compile.is_empty() {
+            continue;
+        }
+
+        c_file_to_compile.insert(main_file);
+
+        println!("  - {}", &main_file.to_string_lossy());
 
         let mut command = Command::new("gcc");
 
@@ -56,26 +68,28 @@ pub fn link(
             command.arg("-g").arg("-Wall");
         }
 
-        for file in file_to_compile {
-            command.arg(file);
+        for c_file in c_file_to_compile {
+            command.arg(objects_dir_path.join(new_hash_hashmap_clone[c_file].to_hex().as_str()));
         }
 
-        println!(
-            "{:?}",
-            command
-                .arg("-o")
-                .arg(binaries_dir_path.join(main_file.file_name().unwrap()))
-        );
+        for link_dir in config.link_dir.iter() {
+            let mut link_dir = link_dir.iter();
 
-        /*
-        commands.push(
-            command
-                .arg("-o")
-                .arg(binaries_dir_path.join(main_file.file_name().unwrap()))
-                .spawn()
-                .unwrap(),
-        );
-        */
+            command.arg("-L").arg(link_dir.next().unwrap());
+
+            for link in link_dir {
+                command.arg("-Wl,-rpath").arg(link);
+            }
+        }
+
+        for link in config.link.iter() {
+            command.arg("-l".to_string() + link.as_str());
+        }
+
+        let mut output_file = binaries_dir_path.join(main_file.file_stem().unwrap());
+
+        output_file.set_extension("out");
+        commands.push(command.arg("-o").arg(output_file).spawn().unwrap());
     }
 
     for command in commands.iter_mut() {
@@ -83,38 +97,15 @@ pub fn link(
     }
 }
 
-fn find_c(
-    config: &Config,
-    objects_dir_path: &Path,
-    h_file: &Path,
-    h_h_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
-    h_c_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
-    new_hash_hashmap_clone: &HashMap<PathBuf, Hash>,
-    file_to_compile: &mut HashSet<PathBuf>,
-    already_explored: &mut HashSet<PathBuf>,
-) {
-    if !already_explored.contains(h_file) {
-        already_explored.insert(h_file.to_path_buf());
+fn find_h(config: &Config, h_file: &Path, already_explored_h: &mut HashSet<PathBuf>) {
+    if !already_explored_h.contains(h_file) {
+        already_explored_h.insert(h_file.to_path_buf());
 
-        if let Some(h_files) = h_h_link.get(h_file).cloned() {
-            for h_file in h_files {
-                find_c(
-                    config,
-                    objects_dir_path,
-                    &h_file,
-                    h_h_link,
-                    h_c_link,
-                    new_hash_hashmap_clone,
-                    file_to_compile,
-                    already_explored,
-                );
-            }
-        } else if let Some(c_files) = h_c_link.get(h_file).cloned() {
-            for c_file in c_files {
-                file_to_compile.insert(
-                    objects_dir_path.join(new_hash_hashmap_clone[&c_file].to_hex().as_str()),
-                );
-            }
+        let code = read_to_string(&h_file).unwrap();
+        let includes = get_includes(&h_file, config.includes.clone(), &code);
+
+        for include in includes {
+            find_h(config, &include, already_explored_h);
         }
     }
 }

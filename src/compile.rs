@@ -17,12 +17,12 @@ pub fn compile(
     h_h_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
     h_c_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
     hash_hashmap: &mut HashMap<PathBuf, Hash>,
-    new_hash_hashmap: &mut HashMap<PathBuf, Hash>,
-    new_hash_hashmap_clone: &HashMap<PathBuf, Hash>,
+    new_hash_hashmap: &HashMap<PathBuf, Hash>,
 ) -> io::Result<()> {
     let mut file_to_compile = HashMap::new();
+    let mut new_hash_hashmap_clone = new_hash_hashmap.clone();
 
-    for new_hash in new_hash_hashmap_clone.clone() {
+    for new_hash in new_hash_hashmap.clone() {
         let extension = new_hash.0.extension().unwrap_or_default();
 
         if let Some(hash) = hash_hashmap.get(&new_hash.0) {
@@ -33,26 +33,26 @@ pub fn compile(
                         .is_file())
                     || extension == "h")
             {
-                new_hash_hashmap.remove(&new_hash.0);
+                new_hash_hashmap_clone.remove(&new_hash.0);
                 hash_hashmap.remove(&new_hash.0);
                 continue;
             }
         }
 
         if extension == "c" {
-            new_hash_hashmap.remove(&new_hash.0);
+            new_hash_hashmap_clone.remove(&new_hash.0);
             file_to_compile.insert(new_hash.0, new_hash.1);
         }
     }
 
     let mut already_explored = HashSet::new();
 
-    for new_hash in new_hash_hashmap.iter() {
+    for new_hash in new_hash_hashmap_clone.iter() {
         find_c_from_h(
             new_hash.0,
             h_h_link,
             h_c_link,
-            &new_hash_hashmap_clone,
+            new_hash_hashmap,
             &mut file_to_compile,
             &mut already_explored,
         );
@@ -66,11 +66,6 @@ pub fn compile(
         }
     }
 
-    drop(hash_hashmap);
-    drop(new_hash_hashmap);
-    drop(new_hash_hashmap_clone);
-    drop(already_explored);
-
     print!("{} file", file_to_compile.len());
 
     if file_to_compile.len() > 1 {
@@ -82,7 +77,7 @@ pub fn compile(
     if file_to_compile.len() > 0 {
         println!(" :");
     } else {
-        println!("");
+        println!(".");
     }
 
     let mut commands = vec![];

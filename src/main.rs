@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     compile::compile,
     config::{load_hash_file, save_hash_file},
+    link::link,
 };
 
 #[derive(Parser, Debug)]
@@ -59,6 +60,12 @@ pub struct Config {
 
     #[serde(alias = "inc")]
     includes: Vec<PathBuf>,
+
+    #[serde(alias = "lnk")]
+    link: Vec<String>,
+
+    #[serde(alias = "lnk_dir")]
+    link_dir: Vec<Vec<String>>,
 }
 
 fn main() -> io::Result<()> {
@@ -68,8 +75,19 @@ fn main() -> io::Result<()> {
 
     if let Ok(config_file) = read_to_string(config_path) {
         let mut config: Config = toml::from_str(&config_file).unwrap();
-        let dir_path = config_dir_path.join("./.maky");
 
+        println!(
+            r#"
+                _          
+    /\/\   __ _| | ___   _ 
+   /    \ / _` | |/ / | | |
+  / /\/\ \ (_| |   <| |_| |
+  \/    \/\__,_|_|\_\\__, |
+                     |___/ 
+        "#
+        );
+
+        let dir_path = config_dir_path.join("./.maky");
         if !dir_path.is_dir() {
             create_dir(dir_path)?;
         }
@@ -115,8 +133,6 @@ fn main() -> io::Result<()> {
 
         save_hash_file(config_dir_path, &new_hash_hashmap)?;
 
-        let new_hash_hashmap_clone = new_hash_hashmap.clone();
-
         compile(
             &args,
             &config,
@@ -124,25 +140,19 @@ fn main() -> io::Result<()> {
             &mut h_h_link,
             &mut h_c_link,
             &mut hash_hashmap,
-            &mut new_hash_hashmap,
-            &new_hash_hashmap_clone,
+            &new_hash_hashmap,
         )?;
 
-        drop(new_hash_hashmap);
-
-        /*
         link(
             &args,
             &config,
             &binaries_dir_path,
             &objects_dir_path,
             &mut main_hashset,
-            &mut h_h_link,
             &mut h_c_link,
             &mut c_h_link,
-            &new_hash_hashmap_clone,
+            &new_hash_hashmap,
         );
-        */
 
         return Ok(());
     }
