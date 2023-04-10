@@ -4,6 +4,7 @@ use std::{
     io,
     path::{Path, PathBuf},
     process::Command,
+    str::FromStr,
 };
 
 use blake3::{hash, Hash};
@@ -111,9 +112,22 @@ fn main() -> io::Result<()> {
 
         let mut file_to_compile = HashMap::new();
 
+        let check_file = |file: &PathBuf| -> bool {
+            !((file.extension().unwrap_or_default() == "c"
+                && hash_hashmap.get(file) == new_hash_hashmap.get(file)
+                && objects_dir_path
+                    .join(new_hash_hashmap[file].to_hex().as_str())
+                    .is_file())
+                || (hash_hashmap.get(file) == new_hash_hashmap.get(file)))
+        };
+
         for new_hash in new_hash_hashmap.iter() {
             if let Some(hash) = hash_hashmap.get(new_hash.0) {
-                if new_hash.1 == hash && new_hash.0.is_file() {
+                if new_hash.1 == hash
+                    && objects_dir_path
+                        .join(new_hash.1.to_hex().as_str())
+                        .is_file()
+                {
                     continue;
                 }
             }
@@ -122,11 +136,13 @@ fn main() -> io::Result<()> {
                 file_to_compile.insert(new_hash.0, new_hash.1);
             } else if let Some(files) = h_c_link.get(new_hash.0) {
                 for file in files {
-                    file_to_compile.insert(file, &new_hash_hashmap[file]);
+                    if check_file(file) {
+                        file_to_compile.insert(file, &new_hash_hashmap[file]);
+                    }
                 }
             } else {
                 c_h_link.iter().for_each(|(file, files)| {
-                    if files.contains(new_hash.0) {
+                    if files.contains(new_hash.0) && check_file(file) {
                         file_to_compile.insert(file, &new_hash_hashmap[file]);
                     }
                 });
@@ -134,6 +150,8 @@ fn main() -> io::Result<()> {
         }
 
         println!("{:#?}", file_to_compile);
+
+        let mut commands = vec![];
 
         for file in file_to_compile {
             let mut command = Command::new("gcc");
@@ -146,13 +164,19 @@ fn main() -> io::Result<()> {
                 command.arg("-I").arg(include);
             }
 
-            command
-                .arg("-c")
-                .arg(file.0)
-                .arg("-o")
-                .arg(objects_dir_path.join(file.1.to_hex().as_str()))
-                .spawn()
-                .unwrap();
+            commands.push(
+                command
+                    .arg("-c")
+                    .arg(file.0)
+                    .arg("-o")
+                    .arg(objects_dir_path.join(file.1.to_hex().as_str()))
+                    .spawn()
+                    .unwrap(),
+            );
+        }
+
+        for command in commands.iter_mut() {
+            command.wait().unwrap();
         }
 
         return Ok(());
@@ -172,7 +196,7 @@ fn load_hash_file(config_dir_path: &Path) -> HashMap<PathBuf, Hash> {
         if index % 2 == 0 {
             hash_path = Path::new(line).to_path_buf();
         } else {
-            if let Ok(hash) = Hash::from_hex(line) {
+            if let Ok(hash) = Hash::from_str(line) {
                 hash_hashmap.insert(hash_path.to_path_buf(), hash);
             }
         }
@@ -186,7 +210,7 @@ fn save_hash_file(config_dir_path: &Path, hash_hashmap: &HashMap<PathBuf, Hash>)
 
     for hash in hash_hashmap {
         data.append(
-            &mut format!("{}\n{}\n", hash.1.to_hex(), &hash.0.to_string_lossy())
+            &mut format!("{}\n{}\n", &hash.0.to_string_lossy(), hash.1.to_hex())
                 .as_bytes()
                 .to_vec(),
         );
