@@ -83,7 +83,7 @@ fn main() -> io::Result<()> {
             create_dir(objects_dir_path.clone())?;
         }
 
-        let hash_hashmap = load_hash_file(config_dir_path);
+        let mut hash_hashmap = load_hash_file(config_dir_path);
         let mut new_hash_hashmap = HashMap::new();
 
         config
@@ -108,46 +108,42 @@ fn main() -> io::Result<()> {
 
         println!("{:#?}", c_h_link);
         println!("{:#?}", h_c_link);
-        println!("{:#?}", new_hash_hashmap);
 
         let mut file_to_compile = HashMap::new();
+        let new_hash_hashmap_clone = new_hash_hashmap.clone();
 
-        let check_file = |file: &PathBuf| -> bool {
-            !((file.extension().unwrap_or_default() == "c"
-                && hash_hashmap.get(file) == new_hash_hashmap.get(file)
-                && objects_dir_path
-                    .join(new_hash_hashmap[file].to_hex().as_str())
-                    .is_file())
-                || (hash_hashmap.get(file) == new_hash_hashmap.get(file)))
-        };
+        for new_hash in new_hash_hashmap_clone.iter() {
+            let extension = new_hash.0.extension().unwrap_or_default();
 
-        for new_hash in new_hash_hashmap.iter() {
             if let Some(hash) = hash_hashmap.get(new_hash.0) {
                 if new_hash.1 == hash
-                    && objects_dir_path
-                        .join(new_hash.1.to_hex().as_str())
-                        .is_file()
+                    && ((extension == "c"
+                        && objects_dir_path
+                            .join(new_hash.1.to_hex().as_str())
+                            .is_file())
+                        || extension == "h")
                 {
+                    new_hash_hashmap.remove(new_hash.0);
+                    hash_hashmap.remove(new_hash.0);
                     continue;
                 }
             }
 
-            if new_hash.0.extension().unwrap_or_default() == "c" {
+            if extension == "c" {
                 file_to_compile.insert(new_hash.0, new_hash.1);
-            } else if let Some(files) = h_c_link.get(new_hash.0) {
-                for file in files {
-                    if check_file(file) {
-                        file_to_compile.insert(file, &new_hash_hashmap[file]);
-                    }
-                }
-            } else {
-                c_h_link.iter().for_each(|(file, files)| {
-                    if files.contains(new_hash.0) && check_file(file) {
-                        file_to_compile.insert(file, &new_hash_hashmap[file]);
-                    }
-                });
+                new_hash_hashmap.remove(new_hash.0);
             }
         }
+
+        for new_hash in new_hash_hashmap.iter() {
+            if let Some(files) = h_c_link.get(new_hash.0) {
+                for file in files.iter() {
+                    file_to_compile.insert(file, &new_hash_hashmap_clone[file]);
+                }
+            }
+        }
+
+        println!("{:#?}", new_hash_hashmap);
 
         println!("{:#?}", file_to_compile);
 
