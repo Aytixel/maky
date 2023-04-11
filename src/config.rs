@@ -89,7 +89,7 @@ pub struct LibConfig {
 }
 
 pub fn load_hash_file(config_dir_path: &Path) -> HashMap<PathBuf, Hash> {
-    let hash_file = read_to_string(config_dir_path.join("./.maky/hash")).unwrap_or_default();
+    let hash_file = read_to_string(config_dir_path.join(".maky/hash")).unwrap_or_default();
     let mut hash_hashmap = HashMap::new();
     let mut hash_path = Path::new("").to_path_buf();
 
@@ -98,7 +98,7 @@ pub fn load_hash_file(config_dir_path: &Path) -> HashMap<PathBuf, Hash> {
             hash_path = Path::new(line).to_path_buf();
         } else {
             if let Ok(hash) = Hash::from_hex(line) {
-                hash_hashmap.insert(hash_path.to_path_buf(), hash);
+                hash_hashmap.insert(config_dir_path.join(&hash_path), hash);
             }
         }
     }
@@ -114,9 +114,17 @@ pub fn save_hash_file(
 
     for hash in hash_hashmap {
         data.append(
-            &mut format!("{}\n{}\n", &hash.0.to_string_lossy(), hash.1.to_hex())
-                .as_bytes()
-                .to_vec(),
+            &mut format!(
+                "{}\n{}\n",
+                &hash
+                    .0
+                    .strip_prefix(config_dir_path)
+                    .unwrap_or(hash.0)
+                    .to_string_lossy(),
+                hash.1.to_hex()
+            )
+            .as_bytes()
+            .to_vec(),
         );
     }
 
