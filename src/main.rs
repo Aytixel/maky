@@ -5,12 +5,16 @@ mod link;
 use std::{
     collections::{HashMap, HashSet},
     fs::{create_dir, read_dir, read_to_string},
-    io,
+    io::{self, stdout},
     path::{Path, PathBuf},
 };
 
 use blake3::{hash, Hash};
 use clap::{command, Parser};
+use crossterm::{
+    execute,
+    style::{Color, Print, ResetColor, SetForegroundColor},
+};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -76,16 +80,19 @@ fn main() -> io::Result<()> {
     if let Ok(config_file) = read_to_string(config_path) {
         let mut config: Config = toml::from_str(&config_file).unwrap();
 
-        println!(
-            r#"
-                _          
-    /\/\   __ _| | ___   _ 
-   /    \ / _` | |/ / | | |
-  / /\/\ \ (_| |   <| |_| |
-  \/    \/\__,_|_|\_\\__, |
-                     |___/ 
-        "#
-        );
+        execute!(
+            stdout(),
+            SetForegroundColor(Color::parse_ansi("2;118;199;56").unwrap()),
+            Print(r"              _          ".to_string() + "\n"),
+            Print(r"  /\/\   __ _| | ___   _ ".to_string() + "\n"),
+            SetForegroundColor(Color::parse_ansi("2;101;171;48").unwrap()),
+            Print(r" /    \ / _` | |/ / | | |".to_string() + "\n"),
+            Print(r"/ /\/\ \ (_| |   <| |_| |".to_string() + "\n"),
+            SetForegroundColor(Color::parse_ansi("2;85;143;40").unwrap()),
+            Print(r"\/    \/\__,_|_|\_\\__, |".to_string() + "\n"),
+            Print(r"                    |___/".to_string() + "\n"),
+            ResetColor
+        )?;
 
         let dir_path = config_dir_path.join("./.maky");
         if !dir_path.is_dir() {
