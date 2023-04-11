@@ -36,6 +36,10 @@ pub struct Args {
     release: bool,
 }
 
+fn default_compiler() -> String {
+    "gcc".to_string()
+}
+
 fn default_binaries() -> PathBuf {
     Path::new("bin").to_path_buf()
 }
@@ -58,6 +62,10 @@ fn default_libraries_dir() -> Vec<Vec<PathBuf>> {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
+    #[serde(default = "default_compiler")]
+    #[serde(alias = "cc")]
+    compiler: String,
+
     #[serde(default = "default_binaries")]
     #[serde(alias = "bin")]
     binaries: PathBuf,

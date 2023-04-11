@@ -58,7 +58,7 @@ pub fn link(
 
         println!("  - {}", &main_file.to_string_lossy());
 
-        let mut command = Command::new("gcc");
+        let mut command = Command::new(&config.compiler);
 
         if !args.release {
             command.arg("-g").arg("-Wall");

@@ -85,7 +85,7 @@ pub fn compile(
     for file in file_to_compile {
         println!("  - {}", &file.0.to_string_lossy());
 
-        let mut command = Command::new("gcc");
+        let mut command = Command::new(&config.compiler);
 
         if !args.release {
             command.arg("-g").arg("-Wall");
