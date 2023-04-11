@@ -7,6 +7,7 @@ use std::{
     fs::{create_dir, read_dir, read_to_string},
     io::{self, stdout},
     path::{Path, PathBuf},
+    process::Command,
 };
 
 use blake3::{hash, Hash};
@@ -19,7 +20,7 @@ use regex::Regex;
 
 use crate::{
     compile::compile,
-    config::{load_hash_file, save_hash_file, Config},
+    config::{load_hash_file, save_hash_file, Config, LibConfig},
     link::link,
 };
 
@@ -108,9 +109,7 @@ fn main() -> io::Result<()> {
 
         save_hash_file(config_dir_path, &new_hash_hashmap)?;
 
-        compile(
-            &args,
-            &config,
+        let files_to_compile = compile(
             &objects_dir_path,
             &mut h_h_link,
             &mut h_c_link,
@@ -118,16 +117,138 @@ fn main() -> io::Result<()> {
             &new_hash_hashmap,
         )?;
 
-        link(
-            &args,
+        print!("{} file", files_to_compile.len());
+
+        if files_to_compile.len() > 1 {
+            print!("s");
+        }
+
+        print!(" to compile");
+
+        if files_to_compile.len() > 0 {
+            println!(" :");
+        } else {
+            println!(".");
+        }
+
+        let mut commands = vec![];
+
+        for file in files_to_compile.iter() {
+            println!(
+                "  - {}",
+                &file
+                    .0
+                    .strip_prefix(config_dir_path)
+                    .unwrap_or(file.0)
+                    .to_string_lossy()
+            );
+
+            let mut command = Command::new(&config.compiler);
+
+            if !args.release {
+                command.arg("-g").arg("-Wall");
+            }
+
+            for include in config.includes.iter() {
+                command.arg("-I").arg(include);
+            }
+
+            commands.push(
+                command
+                    .arg("-c")
+                    .arg(file.0)
+                    .arg("-o")
+                    .arg(objects_dir_path.join(file.1.to_hex().as_str()))
+                    .spawn()
+                    .unwrap(),
+            );
+        }
+
+        let files_to_link = link(
             &config,
-            &binaries_dir_path,
-            &objects_dir_path,
-            &mut main_hashset,
-            &mut h_c_link,
-            &mut c_h_link,
-            &new_hash_hashmap,
+            &main_hashset,
+            &files_to_compile,
+            &h_c_link,
+            &c_h_link,
         );
+
+        for mut command in commands.drain(..) {
+            command.wait().unwrap();
+        }
+
+        print!("{} file", files_to_link.len());
+
+        if files_to_link.len() > 1 {
+            print!("s");
+        }
+
+        print!(" to link");
+
+        if files_to_link.len() > 0 {
+            println!(" :");
+        } else {
+            println!(".");
+        }
+
+        for (main_file, file_to_link) in files_to_link {
+            println!(
+                "  - {}",
+                &main_file
+                    .strip_prefix(config_dir_path)
+                    .unwrap_or(&main_file)
+                    .to_string_lossy()
+            );
+
+            let mut command = Command::new(&config.compiler);
+
+            if !args.release {
+                command.arg("-g").arg("-Wall");
+            }
+
+            for c_file in file_to_link {
+                command.arg(objects_dir_path.join(new_hash_hashmap[&c_file].to_hex().as_str()));
+            }
+
+            for lib in {
+                let mut libs: Vec<&LibConfig> = config.libraries.values().collect();
+
+                libs.reverse();
+                libs
+            } {
+                if !lib.regex.is_empty() {
+                    if !lib
+                        .regex
+                        .iter()
+                        .any(|regex| regex.is_match(&main_file.to_string_lossy()))
+                    {
+                        continue;
+                    }
+                }
+
+                let mut lib_dir_iter = lib.directories.iter();
+
+                if let Some(lib_dir) = lib_dir_iter.next() {
+                    command.arg("-L").arg(lib_dir);
+
+                    for lib_dir in lib_dir_iter {
+                        command.arg("-Wl,-rpath").arg(lib_dir);
+                    }
+                }
+
+                for lib in lib.library.iter() {
+                    command.arg("-l".to_string() + lib);
+                }
+            }
+
+            let mut output_file = binaries_dir_path.join(main_file.file_stem().unwrap());
+
+            output_file.set_extension("out");
+            commands.push(command.arg("-o").arg(output_file).spawn().unwrap());
+        }
+
+        for mut command in commands.drain(..) {
+            command.wait().unwrap();
+        }
 
         return Ok(());
     }
@@ -195,37 +316,6 @@ fn scan_dir(
     }
 
     return Ok(());
-}
-
-fn find_c_from_h(
-    file: &Path,
-    h_h_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
-    h_c_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
-    new_hash_hashmap_clone: &HashMap<PathBuf, Hash>,
-    file_to_compile: &mut HashMap<PathBuf, Hash>,
-    already_explored: &mut HashSet<PathBuf>,
-) {
-    if !already_explored.contains(file) {
-        already_explored.insert(file.to_path_buf());
-
-        if let Some(files) = h_c_link.get(file) {
-            for file in files.iter() {
-                file_to_compile.insert(file.to_path_buf(), new_hash_hashmap_clone[file]);
-            }
-        }
-        if let Some(files) = h_h_link.get(file) {
-            for file in files.clone() {
-                find_c_from_h(
-                    &file,
-                    h_h_link,
-                    h_c_link,
-                    new_hash_hashmap_clone,
-                    file_to_compile,
-                    already_explored,
-                );
-            }
-        }
-    }
 }
 
 fn get_includes(path: &Path, include_path_vec: Vec<PathBuf>, code: &String) -> HashSet<PathBuf> {
