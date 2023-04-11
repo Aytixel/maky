@@ -83,7 +83,6 @@ pub fn link(
                     .iter()
                     .any(|regex| regex.is_match(&main_file.to_string_lossy()))
                 {
-                    println!("{}", &main_file.to_string_lossy());
                     continue;
                 }
             }
