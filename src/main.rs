@@ -40,12 +40,20 @@ fn default_binaries() -> PathBuf {
     Path::new("bin").to_path_buf()
 }
 
-fn default_sources() -> PathBuf {
-    Path::new("src").to_path_buf()
-}
-
 fn default_objects() -> PathBuf {
     Path::new("obj").to_path_buf()
+}
+
+fn default_sources() -> Vec<PathBuf> {
+    vec![Path::new("src").to_path_buf()]
+}
+
+fn default_empty_path_vec() -> Vec<PathBuf> {
+    vec![]
+}
+
+fn default_libraries_dir() -> Vec<Vec<PathBuf>> {
+    vec![]
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -54,22 +62,25 @@ pub struct Config {
     #[serde(alias = "bin")]
     binaries: PathBuf,
 
-    #[serde(default = "default_sources")]
-    #[serde(alias = "src")]
-    sources: PathBuf,
-
     #[serde(default = "default_objects")]
     #[serde(alias = "obj")]
     objects: PathBuf,
 
+    #[serde(default = "default_sources")]
+    #[serde(alias = "src")]
+    sources: Vec<PathBuf>,
+
+    #[serde(default = "default_empty_path_vec")]
     #[serde(alias = "inc")]
     includes: Vec<PathBuf>,
 
-    #[serde(alias = "lnk")]
-    link: Vec<String>,
+    #[serde(default = "default_empty_path_vec")]
+    #[serde(alias = "lib")]
+    libraries: Vec<PathBuf>,
 
-    #[serde(alias = "lnk_dir")]
-    link_dir: Vec<Vec<String>>,
+    #[serde(default = "default_libraries_dir")]
+    #[serde(alias = "lib_dir")]
+    libraries_dir: Vec<Vec<PathBuf>>,
 }
 
 fn main() -> io::Result<()> {
@@ -104,9 +115,14 @@ fn main() -> io::Result<()> {
             create_dir(binaries_dir_path.clone())?;
         }
 
-        let sources_dir_path = config_dir_path.join(config.sources.clone());
-        if !sources_dir_path.is_dir() {
-            create_dir(sources_dir_path)?;
+        for source in config.sources.iter() {
+            let sources_dir_path = config_dir_path.join(source);
+
+            if !sources_dir_path.is_dir() {
+                create_dir(sources_dir_path)?;
+            }
+
+            config.includes.push(config_dir_path.join(source));
         }
 
         let objects_dir_path = config_dir_path.join(config.objects.clone());
@@ -114,9 +130,7 @@ fn main() -> io::Result<()> {
             create_dir(objects_dir_path.clone())?;
         }
 
-        config
-            .includes
-            .push(config_dir_path.join(config.sources.clone()));
+        config.includes.push(config_dir_path.join("/usr/include"));
 
         println!("{:#?}", args);
         println!("{:#?}", config);
@@ -128,15 +142,17 @@ fn main() -> io::Result<()> {
         let mut h_c_link = HashMap::new();
         let mut c_h_link = HashMap::new();
 
-        scan_dir(
-            &config,
-            &config_dir_path.join(config.sources.clone()),
-            &mut main_hashset,
-            &mut h_h_link,
-            &mut h_c_link,
-            &mut c_h_link,
-            &mut new_hash_hashmap,
-        )?;
+        for source in config.sources.iter() {
+            scan_dir(
+                &config,
+                &config_dir_path.join(source),
+                &mut main_hashset,
+                &mut h_h_link,
+                &mut h_c_link,
+                &mut c_h_link,
+                &mut new_hash_hashmap,
+            )?;
+        }
 
         save_hash_file(config_dir_path, &new_hash_hashmap)?;
 

@@ -21,9 +21,6 @@ pub fn link(
     c_h_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
     new_hash_hashmap_clone: &HashMap<PathBuf, Hash>,
 ) {
-    let h_c_link_filtered = filter_h_c_link(h_c_link);
-    let mut commands: Vec<Child> = vec![];
-
     print!("{} file", main_hashset.len());
 
     if main_hashset.len() > 1 {
@@ -37,6 +34,9 @@ pub fn link(
     } else {
         println!(".");
     }
+
+    let h_c_link_filtered = filter_h_c_link(h_c_link);
+    let mut commands: Vec<Child> = vec![];
 
     for main_file in main_hashset.iter() {
         let mut c_file_to_compile = HashSet::new();
@@ -54,10 +54,6 @@ pub fn link(
             }
         }
 
-        if c_file_to_compile.is_empty() {
-            continue;
-        }
-
         c_file_to_compile.insert(main_file);
 
         println!("  - {}", &main_file.to_string_lossy());
@@ -72,18 +68,18 @@ pub fn link(
             command.arg(objects_dir_path.join(new_hash_hashmap_clone[c_file].to_hex().as_str()));
         }
 
-        for link_dir in config.link_dir.iter() {
-            let mut link_dir = link_dir.iter();
+        for library_dir in config.libraries_dir.iter() {
+            let mut library_dir_iter = library_dir.iter();
 
-            command.arg("-L").arg(link_dir.next().unwrap());
+            command.arg("-L").arg(library_dir_iter.next().unwrap());
 
-            for link in link_dir {
-                command.arg("-Wl,-rpath").arg(link);
+            for library in library_dir_iter {
+                command.arg("-Wl,-rpath").arg(library);
             }
         }
 
-        for link in config.link.iter() {
-            command.arg("-l".to_string() + link.as_str());
+        for library in config.libraries.iter() {
+            command.arg("-l".to_string() + &library.to_string_lossy());
         }
 
         let mut output_file = binaries_dir_path.join(main_file.file_stem().unwrap());
