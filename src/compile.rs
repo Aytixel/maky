@@ -8,7 +8,7 @@ use std::{
 
 use blake3::Hash;
 
-use crate::{find_c_from_h, Args, Config};
+use crate::{config::Config, find_c_from_h, Args};
 
 pub fn compile(
     args: &Args,

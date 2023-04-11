@@ -9,7 +9,10 @@ use blake3::Hash;
 use pretok::Pretokenizer;
 use regex::Regex;
 
-use crate::{get_includes, Args, Config};
+use crate::{
+    config::{Config, LibConfig},
+    get_includes, Args,
+};
 
 pub fn link(
     args: &Args,
@@ -68,18 +71,36 @@ pub fn link(
             command.arg(objects_dir_path.join(new_hash_hashmap_clone[c_file].to_hex().as_str()));
         }
 
-        for library_dir in config.libraries_dir.iter() {
-            let mut library_dir_iter = library_dir.iter();
+        for lib in {
+            let mut libs: Vec<&LibConfig> = config.libraries.values().collect();
 
-            command.arg("-L").arg(library_dir_iter.next().unwrap());
-
-            for library in library_dir_iter {
-                command.arg("-Wl,-rpath").arg(library);
+            libs.reverse();
+            libs
+        } {
+            if !lib.regex.is_empty() {
+                if !lib
+                    .regex
+                    .iter()
+                    .any(|regex| regex.is_match(&main_file.to_string_lossy()))
+                {
+                    println!("{}", &main_file.to_string_lossy());
+                    continue;
+                }
             }
-        }
 
-        for library in config.libraries.iter() {
-            command.arg("-l".to_string() + &library.to_string_lossy());
+            let mut lib_dir_iter = lib.directories.iter();
+
+            if let Some(lib_dir) = lib_dir_iter.next() {
+                command.arg("-L").arg(lib_dir);
+
+                for lib_dir in lib_dir_iter {
+                    command.arg("-Wl,-rpath").arg(lib_dir);
+                }
+            }
+
+            for lib in lib.library.iter() {
+                command.arg("-l".to_string() + lib);
+            }
         }
 
         let mut output_file = binaries_dir_path.join(main_file.file_stem().unwrap());

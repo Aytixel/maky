@@ -1,3 +1,11 @@
 src = ["src", "tests"]
-lib = ["m", "SDL2main", "SDL2", "SDL2_image", "SDL2_ttf"]
-lib_dir = [["/usr/local/lib/", "/usr/lib/", "/lib/x86_64-linux-gnu/", "./"]]
+
+[libs.math]
+lib = ["m"]
+
+[libs.sdl]
+reg = [
+    "(test_animation|test_building|test_game|test_window|main_client|gestion_ressources).c$",
+]
+lib = ["SDL2main", "SDL2", "SDL2_image", "SDL2_ttf"]
+dir = ["/usr/local/lib/", "/usr/lib/", "/lib/x86_64-linux-gnu/", "./"]

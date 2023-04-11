@@ -16,11 +16,10 @@ use crossterm::{
     style::{Color, Print, ResetColor, SetForegroundColor},
 };
 use regex::Regex;
-use serde::{Deserialize, Serialize};
 
 use crate::{
     compile::compile,
-    config::{load_hash_file, save_hash_file},
+    config::{load_hash_file, save_hash_file, Config},
     link::link,
 };
 
@@ -34,61 +33,6 @@ pub struct Args {
     /// Building release
     #[arg(long)]
     release: bool,
-}
-
-fn default_compiler() -> String {
-    "gcc".to_string()
-}
-
-fn default_binaries() -> PathBuf {
-    Path::new("bin").to_path_buf()
-}
-
-fn default_objects() -> PathBuf {
-    Path::new("obj").to_path_buf()
-}
-
-fn default_sources() -> Vec<PathBuf> {
-    vec![Path::new("src").to_path_buf()]
-}
-
-fn default_empty_path_vec() -> Vec<PathBuf> {
-    vec![]
-}
-
-fn default_libraries_dir() -> Vec<Vec<PathBuf>> {
-    vec![]
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Config {
-    #[serde(default = "default_compiler")]
-    #[serde(alias = "cc")]
-    compiler: String,
-
-    #[serde(default = "default_binaries")]
-    #[serde(alias = "bin")]
-    binaries: PathBuf,
-
-    #[serde(default = "default_objects")]
-    #[serde(alias = "obj")]
-    objects: PathBuf,
-
-    #[serde(default = "default_sources")]
-    #[serde(alias = "src")]
-    sources: Vec<PathBuf>,
-
-    #[serde(default = "default_empty_path_vec")]
-    #[serde(alias = "inc")]
-    includes: Vec<PathBuf>,
-
-    #[serde(default = "default_empty_path_vec")]
-    #[serde(alias = "lib")]
-    libraries: Vec<PathBuf>,
-
-    #[serde(default = "default_libraries_dir")]
-    #[serde(alias = "lib_dir")]
-    libraries_dir: Vec<Vec<PathBuf>>,
 }
 
 fn main() -> io::Result<()> {
