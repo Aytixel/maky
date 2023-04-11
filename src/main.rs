@@ -107,12 +107,10 @@ fn main() -> io::Result<()> {
             )?;
         }
 
-        save_hash_file(config_dir_path, &new_hash_hashmap)?;
-
         let files_to_compile = compile(
             &objects_dir_path,
-            &mut h_h_link,
-            &mut h_c_link,
+            &h_h_link,
+            &h_c_link,
             &mut hash_hashmap,
             &new_hash_hashmap,
         )?;
@@ -153,7 +151,8 @@ fn main() -> io::Result<()> {
                 command.arg("-I").arg(include);
             }
 
-            commands.push(
+            commands.push((
+                file.0.to_path_buf(),
                 command
                     .arg("-c")
                     .arg(file.0)
@@ -161,7 +160,7 @@ fn main() -> io::Result<()> {
                     .arg(objects_dir_path.join(file.1.to_hex().as_str()))
                     .spawn()
                     .unwrap(),
-            );
+            ));
         }
 
         let files_to_link = link(
@@ -172,8 +171,14 @@ fn main() -> io::Result<()> {
             &c_h_link,
         );
 
-        for mut command in commands.drain(..) {
-            command.wait().unwrap();
+        for (file, mut command) in commands.drain(..) {
+            if let Ok(exit_code) = command.wait() {
+                if !exit_code.success() {
+                    new_hash_hashmap.remove(&file);
+                }
+            } else {
+                new_hash_hashmap.remove(&file);
+            }
         }
 
         print!("{} file", files_to_link.len());
@@ -243,12 +248,23 @@ fn main() -> io::Result<()> {
             let mut output_file = binaries_dir_path.join(main_file.file_stem().unwrap());
 
             output_file.set_extension("out");
-            commands.push(command.arg("-o").arg(output_file).spawn().unwrap());
+            commands.push((
+                main_file,
+                command.arg("-o").arg(output_file).spawn().unwrap(),
+            ));
         }
 
-        for mut command in commands.drain(..) {
-            command.wait().unwrap();
+        for (file, mut command) in commands.drain(..) {
+            if let Ok(exit_code) = command.wait() {
+                if !exit_code.success() {
+                    new_hash_hashmap.remove(&file);
+                }
+            } else {
+                new_hash_hashmap.remove(&file);
+            }
         }
+
+        save_hash_file(config_dir_path, &new_hash_hashmap)?;
 
         return Ok(());
     }
