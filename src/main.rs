@@ -82,7 +82,7 @@ fn main() -> io::Result<()> {
             Print(r"/ /\/\ \ (_| |   <| |_| |".to_string() + "\n"),
             SetForegroundColor(Color::parse_ansi("2;54;120;26").unwrap()),
             Print(r"\/    \/\__,_|_|\_\\__, |".to_string() + "\n"),
-            SetForegroundColor(Color::Magenta),
+            SetForegroundColor(Color::DarkMagenta),
             if release {
                 Print(r"Release             ".bold())
             } else {
@@ -174,7 +174,7 @@ fn main() -> io::Result<()> {
                 let mut compile_progress_bar = RichProgress::new(
                     tqdm!(total = files_to_compile.len()),
                     vec![
-                        Column::text("[bold green]   Compiling"),
+                        Column::text("[bold darkgreen]   Compiling"),
                         Column::Spinner(
                             "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
                                 .chars()
@@ -236,7 +236,7 @@ fn main() -> io::Result<()> {
                 &c_h_link,
             );
 
-            let mut err = String::new();
+            let mut errors = vec![];
 
             for (file, mut command) in commands.drain(..) {
                 if let Some(compile_progress_bar) = &mut compile_progress_bar_option {
@@ -255,28 +255,53 @@ fn main() -> io::Result<()> {
                         new_hash_hashmap.remove(file);
                     }
 
-                    command.stderr.unwrap().read_to_string(&mut err)?;
+                    let mut buffer = String::new();
+
+                    command.stderr.unwrap().read_to_string(&mut buffer)?;
+                    errors.push((file, buffer));
                 } else {
                     new_hash_hashmap.remove(file);
                 }
             }
 
-            if !err.is_empty() {
-                execute!(
-                    stderr(),
-                    SetForegroundColor(Color::Red),
-                    Print("\n\nWarnings & Errors :\n\n".bold()),
-                    ResetColor,
-                )?;
+            if let Some(compile_progress_bar) = &mut compile_progress_bar_option {
+                compile_progress_bar.columns.drain(1..6);
+                compile_progress_bar.clear();
+                compile_progress_bar.refresh();
 
-                eprintln!("{err}");
+                println!();
+            }
+
+            if !errors.is_empty() {
+                let mut is_first = true;
+
+                for (file, error) in errors.iter() {
+                    if !error.is_empty() {
+                        if is_first {
+                            println!();
+
+                            is_first = false;
+                        }
+
+                        execute!(
+                            stderr(),
+                            SetForegroundColor(Color::Red),
+                            Print("Errors : ".bold()),
+                            ResetColor,
+                            Print(file.to_string_lossy()),
+                            Print("\n\n"),
+                        )?;
+
+                        eprintln!("{error}");
+                    }
+                }
             }
 
             let mut link_progress_bar_option = if files_to_link.len() > 0 {
                 let mut link_progress_bar = RichProgress::new(
                     tqdm!(total = files_to_link.len()),
                     vec![
-                        Column::text("[bold green]     Linking"),
+                        Column::text("[bold darkgreen]     Linking"),
                         Column::Spinner(
                             "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
                                 .chars()
@@ -382,7 +407,7 @@ fn main() -> io::Result<()> {
                 ));
             }
 
-            let mut err = String::new();
+            let mut errors = vec![];
 
             for (file, mut command) in commands.drain(..) {
                 if let Some(link_progress_bar) = &mut link_progress_bar_option {
@@ -401,7 +426,10 @@ fn main() -> io::Result<()> {
                         new_hash_hashmap.remove(file);
                     }
 
-                    command.stderr.unwrap().read_to_string(&mut err)?;
+                    let mut buffer = String::new();
+
+                    command.stderr.unwrap().read_to_string(&mut buffer)?;
+                    errors.push((file, buffer));
                 } else {
                     new_hash_hashmap.remove(file);
                 }
@@ -409,20 +437,42 @@ fn main() -> io::Result<()> {
 
             new_hash_hashmap.save(project_path)?;
 
-            if !err.is_empty() {
-                execute!(
-                    stderr(),
-                    SetForegroundColor(Color::Red),
-                    Print("\n\nWarnings & Errors :\n\n".bold()),
-                    ResetColor,
-                )?;
+            if let Some(link_progress_bar) = &mut link_progress_bar_option {
+                link_progress_bar.columns.drain(1..6);
+                link_progress_bar.clear();
+                link_progress_bar.refresh();
 
-                eprintln!("{err}");
+                println!();
+            }
+
+            if !errors.is_empty() {
+                let mut is_first = true;
+
+                for (file, error) in errors.iter() {
+                    if !error.is_empty() {
+                        if is_first {
+                            println!();
+
+                            is_first = false;
+                        }
+
+                        execute!(
+                            stderr(),
+                            SetForegroundColor(Color::Red),
+                            Print("Errors : ".bold()),
+                            ResetColor,
+                            Print(file.to_string_lossy()),
+                            Print("\n"),
+                        )?;
+
+                        eprintln!("{error}");
+                    }
+                }
             }
 
             execute!(
                 stdout(),
-                SetForegroundColor(Color::Green),
+                SetForegroundColor(Color::DarkGreen),
                 Print("    Finished ".bold()),
                 ResetColor,
                 Print(if release {
@@ -449,7 +499,7 @@ fn main() -> io::Result<()> {
                 if output_file.exists() {
                     execute!(
                         stdout(),
-                        SetForegroundColor(Color::Green),
+                        SetForegroundColor(Color::DarkGreen),
                         Print("     Running ".bold()),
                         ResetColor,
                         Print("`"),
@@ -481,7 +531,7 @@ fn main() -> io::Result<()> {
 
         execute!(
             stderr(),
-            SetForegroundColor(Color::Red),
+            SetForegroundColor(Color::DarkRed),
             Print("Project config file found !\n".bold()),
             ResetColor,
         )?;
