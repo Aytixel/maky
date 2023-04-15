@@ -4,7 +4,7 @@ mod link;
 
 use std::{
     collections::{HashMap, HashSet},
-    fs::{create_dir, read_dir, read_to_string, remove_file},
+    fs::{create_dir, create_dir_all, read_dir, read_to_string, remove_file},
     io::{self, stdout},
     path::{Path, PathBuf},
     process::Command,
@@ -39,7 +39,7 @@ pub struct Args {
 fn main() -> io::Result<()> {
     let args = Args::parse();
     let project_config_path = Path::new(&args.file);
-    let config_dir_path = project_config_path.parent().unwrap_or(Path::new("./"));
+    let project_path = project_config_path.parent().unwrap_or(Path::new("./"));
 
     if let Ok(mut project_config) = ProjectConfig::load(project_config_path) {
         execute!(
@@ -58,39 +58,42 @@ fn main() -> io::Result<()> {
             ResetColor
         )?;
 
-        let dir_path = config_dir_path.join("./.maky");
+        let dir_path = project_path.join("./.maky");
         if !dir_path.is_dir() {
             create_dir(dir_path)?;
         }
 
-        let binaries_dir_path = config_dir_path.join(project_config.binaries.clone());
+        let binaries_dir_path = project_path.join(project_config.binaries.clone());
         if !binaries_dir_path.is_dir() {
             create_dir(binaries_dir_path.clone())?;
         }
 
         for source in project_config.sources.iter() {
-            let sources_dir_path = config_dir_path.join(source);
+            let sources_dir_path = project_path.join(source);
 
             if !sources_dir_path.is_dir() {
                 create_dir(sources_dir_path)?;
             }
 
-            project_config.includes.push(config_dir_path.join(source));
+            project_config.includes.push(project_path.join(source));
         }
 
-        let objects_dir_path = config_dir_path.join(project_config.objects.clone());
+        let objects_dir_path = project_path.join(project_config.objects.clone());
         if !objects_dir_path.is_dir() {
             create_dir(objects_dir_path.clone())?;
         }
 
         project_config
             .includes
-            .push(config_dir_path.join("/usr/include"));
+            .push(project_path.join("/usr/include"));
 
-        println!("{:#?}", args);
-        println!("{:#?}", project_config);
+        if args.release {
+            println!("Release mode.\n");
+        } else {
+            println!("Debug mode.\n");
+        }
 
-        let mut config = Config::load(config_dir_path).unwrap_or_default();
+        let mut config = Config::load(project_path).unwrap_or_default();
         let mut hash_hashmap = if config.release != args.release {
             for entry in read_dir(&objects_dir_path)? {
                 if let Ok(entry) = entry {
@@ -104,7 +107,7 @@ fn main() -> io::Result<()> {
 
             HashMap::new()
         } else {
-            HashMap::load(config_dir_path).unwrap_or_default()
+            HashMap::load(project_path).unwrap_or_default()
         };
         let mut new_hash_hashmap = HashMap::new();
         let mut main_hashset = HashSet::new();
@@ -113,12 +116,12 @@ fn main() -> io::Result<()> {
         let mut c_h_link = HashMap::new();
 
         config.release = args.release;
-        config.save(config_dir_path)?;
+        config.save(project_path)?;
 
         for source in project_config.sources.iter() {
             scan_dir(
                 &project_config,
-                &config_dir_path.join(source),
+                &project_path.join(source),
                 &mut main_hashset,
                 &mut h_h_link,
                 &mut h_c_link,
@@ -156,7 +159,7 @@ fn main() -> io::Result<()> {
                 "  - {}",
                 &file
                     .0
-                    .strip_prefix(config_dir_path)
+                    .strip_prefix(project_path)
                     .unwrap_or(file.0)
                     .to_string_lossy()
             );
@@ -172,7 +175,7 @@ fn main() -> io::Result<()> {
             }
 
             commands.push((
-                file.0.to_path_buf(),
+                file.0,
                 command
                     .arg("-c")
                     .arg(file.0)
@@ -194,10 +197,10 @@ fn main() -> io::Result<()> {
         for (file, mut command) in commands.drain(..) {
             if let Ok(exit_code) = command.wait() {
                 if !exit_code.success() {
-                    new_hash_hashmap.remove(&file);
+                    new_hash_hashmap.remove(file);
                 }
             } else {
-                new_hash_hashmap.remove(&file);
+                new_hash_hashmap.remove(file);
             }
         }
 
@@ -215,11 +218,11 @@ fn main() -> io::Result<()> {
             println!(".");
         }
 
-        for (main_file, file_to_link) in files_to_link {
+        for (main_file, file_to_link) in &files_to_link {
             println!(
                 "  - {}",
                 &main_file
-                    .strip_prefix(config_dir_path)
+                    .strip_prefix(project_path)
                     .unwrap_or(&main_file)
                     .to_string_lossy()
             );
@@ -231,7 +234,7 @@ fn main() -> io::Result<()> {
             }
 
             for c_file in file_to_link {
-                command.arg(objects_dir_path.join(new_hash_hashmap[&c_file].to_hex().as_str()));
+                command.arg(objects_dir_path.join(new_hash_hashmap[c_file].to_hex().as_str()));
             }
 
             command
@@ -273,7 +276,22 @@ fn main() -> io::Result<()> {
                 }
             }
 
-            let mut output_file = binaries_dir_path.join(main_file.file_stem().unwrap());
+            let output_path = binaries_dir_path
+                .join(if args.release {
+                    Path::new("release")
+                } else {
+                    Path::new("debug")
+                })
+                .join(
+                    main_file
+                        .parent()
+                        .unwrap_or(Path::new("./"))
+                        .strip_prefix(project_path)
+                        .unwrap_or(Path::new("./")),
+                );
+            let mut output_file = output_path.join(main_file.file_stem().unwrap());
+
+            create_dir_all(output_path).unwrap();
 
             output_file.set_extension("out");
             commands.push((
@@ -285,14 +303,14 @@ fn main() -> io::Result<()> {
         for (file, mut command) in commands.drain(..) {
             if let Ok(exit_code) = command.wait() {
                 if !exit_code.success() {
-                    new_hash_hashmap.remove(&file);
+                    new_hash_hashmap.remove(file);
                 }
             } else {
-                new_hash_hashmap.remove(&file);
+                new_hash_hashmap.remove(file);
             }
         }
 
-        new_hash_hashmap.save(config_dir_path)?;
+        new_hash_hashmap.save(project_path)?;
 
         return Ok(());
     }

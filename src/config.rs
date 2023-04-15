@@ -32,16 +32,16 @@ impl Config {
 }
 
 impl LoadConfig for Config {
-    fn load(config_dir_path: &Path) -> io::Result<Self> {
-        toml::from_str(&read_to_string(config_dir_path.join(".maky/config.toml"))?)
+    fn load(project_path: &Path) -> io::Result<Self> {
+        toml::from_str(&read_to_string(project_path.join(".maky/config.toml"))?)
             .map_err(|error| io::Error::new(io::ErrorKind::Other, error))
     }
 }
 
 impl SaveConfig for Config {
-    fn save(&self, config_dir_path: &Path) -> io::Result<()> {
+    fn save(&self, project_path: &Path) -> io::Result<()> {
         write(
-            config_dir_path.join("./.maky/config.toml"),
+            project_path.join("./.maky/config.toml"),
             toml::to_string_pretty(self)
                 .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?,
         )
@@ -131,17 +131,17 @@ impl LibConfig {
 }
 
 impl LoadConfig for HashMap<PathBuf, Hash> {
-    fn load(config_dir_path: &Path) -> io::Result<Self> {
-        let hash_file = read_to_string(config_dir_path.join(".maky/hash"))?;
+    fn load(project_path: &Path) -> io::Result<Self> {
+        let hash_file = read_to_string(project_path.join(".maky/hash"))?;
         let mut hash_hashmap = HashMap::new();
-        let mut hash_path = Path::new("").to_path_buf();
+        let mut hash_path = Path::new("");
 
         for (index, line) in hash_file.lines().enumerate() {
             if index % 2 == 0 {
-                hash_path = Path::new(line).to_path_buf();
+                hash_path = Path::new(line);
             } else {
                 if let Ok(hash) = Hash::from_hex(line) {
-                    hash_hashmap.insert(config_dir_path.join(&hash_path), hash);
+                    hash_hashmap.insert(project_path.join(hash_path), hash);
                 }
             }
         }
@@ -151,7 +151,7 @@ impl LoadConfig for HashMap<PathBuf, Hash> {
 }
 
 impl SaveConfig for HashMap<PathBuf, Hash> {
-    fn save(&self, config_dir_path: &Path) -> io::Result<()> {
+    fn save(&self, project_path: &Path) -> io::Result<()> {
         let mut data = vec![];
 
         for hash in self {
@@ -160,7 +160,7 @@ impl SaveConfig for HashMap<PathBuf, Hash> {
                     "{}\n{}\n",
                     &hash
                         .0
-                        .strip_prefix(config_dir_path)
+                        .strip_prefix(project_path)
                         .unwrap_or(hash.0)
                         .to_string_lossy(),
                     hash.1.to_hex()
@@ -170,6 +170,6 @@ impl SaveConfig for HashMap<PathBuf, Hash> {
             );
         }
 
-        write(config_dir_path.join("./.maky/hash"), data)
+        write(project_path.join("./.maky/hash"), data)
     }
 }
