@@ -4,7 +4,7 @@ mod link;
 
 use std::{
     collections::{HashMap, HashSet},
-    fs::{create_dir, read_dir, read_to_string},
+    fs::{create_dir, read_dir, read_to_string, remove_file},
     io::{self, stdout},
     path::{Path, PathBuf},
     process::Command,
@@ -20,7 +20,7 @@ use regex::Regex;
 
 use crate::{
     compile::compile,
-    config::{load_hash_file, save_hash_file, Config, LibConfig},
+    config::{Config, LibConfig, LoadConfig, ProjectConfig, SaveConfig},
     link::link,
 };
 
@@ -38,22 +38,22 @@ pub struct Args {
 
 fn main() -> io::Result<()> {
     let args = Args::parse();
-    let config_path = Path::new(&args.file);
-    let config_dir_path = config_path.parent().unwrap_or(Path::new("./"));
+    let project_config_path = Path::new(&args.file);
+    let config_dir_path = project_config_path.parent().unwrap_or(Path::new("./"));
 
-    if let Ok(config_file) = read_to_string(config_path) {
-        let mut config: Config = toml::from_str(&config_file).unwrap();
-
+    if let Ok(mut project_config) = ProjectConfig::load(project_config_path) {
         execute!(
             stdout(),
-            SetForegroundColor(Color::parse_ansi("2;118;199;56").unwrap()),
+            SetForegroundColor(Color::parse_ansi("2;118;200;56").unwrap()),
             Print(r"              _          ".to_string() + "\n"),
             Print(r"  /\/\   __ _| | ___   _ ".to_string() + "\n"),
-            SetForegroundColor(Color::parse_ansi("2;101;171;48").unwrap()),
+            SetForegroundColor(Color::parse_ansi("2;101;180;48").unwrap()),
             Print(r" /    \ / _` | |/ / | | |".to_string() + "\n"),
+            SetForegroundColor(Color::parse_ansi("2;78;150;37").unwrap()),
             Print(r"/ /\/\ \ (_| |   <| |_| |".to_string() + "\n"),
-            SetForegroundColor(Color::parse_ansi("2;85;143;40").unwrap()),
+            SetForegroundColor(Color::parse_ansi("2;54;120;26").unwrap()),
             Print(r"\/    \/\__,_|_|\_\\__, |".to_string() + "\n"),
+            SetForegroundColor(Color::parse_ansi("2;24;80;11").unwrap()),
             Print(r"                    |___/".to_string() + "\n"),
             ResetColor
         )?;
@@ -63,41 +63,61 @@ fn main() -> io::Result<()> {
             create_dir(dir_path)?;
         }
 
-        let binaries_dir_path = config_dir_path.join(config.binaries.clone());
+        let binaries_dir_path = config_dir_path.join(project_config.binaries.clone());
         if !binaries_dir_path.is_dir() {
             create_dir(binaries_dir_path.clone())?;
         }
 
-        for source in config.sources.iter() {
+        for source in project_config.sources.iter() {
             let sources_dir_path = config_dir_path.join(source);
 
             if !sources_dir_path.is_dir() {
                 create_dir(sources_dir_path)?;
             }
 
-            config.includes.push(config_dir_path.join(source));
+            project_config.includes.push(config_dir_path.join(source));
         }
 
-        let objects_dir_path = config_dir_path.join(config.objects.clone());
+        let objects_dir_path = config_dir_path.join(project_config.objects.clone());
         if !objects_dir_path.is_dir() {
             create_dir(objects_dir_path.clone())?;
         }
 
-        config.includes.push(config_dir_path.join("/usr/include"));
+        project_config
+            .includes
+            .push(config_dir_path.join("/usr/include"));
 
         println!("{:#?}", args);
-        println!("{:#?}", config);
+        println!("{:#?}", project_config);
 
-        let mut hash_hashmap = load_hash_file(config_dir_path);
+        let mut config = Config::load(config_dir_path).unwrap_or_default();
+        let mut hash_hashmap = if config.release != args.release {
+            for entry in read_dir(&objects_dir_path)? {
+                if let Ok(entry) = entry {
+                    let path = entry.path();
+
+                    if path.is_file() {
+                        remove_file(path).ok();
+                    }
+                }
+            }
+
+            HashMap::new()
+        } else {
+            HashMap::load(config_dir_path).unwrap_or_default()
+        };
         let mut new_hash_hashmap = HashMap::new();
         let mut main_hashset = HashSet::new();
         let mut h_h_link = HashMap::new();
         let mut h_c_link = HashMap::new();
         let mut c_h_link = HashMap::new();
 
-        for source in config.sources.iter() {
+        config.release = args.release;
+        config.save(config_dir_path)?;
+
+        for source in project_config.sources.iter() {
             scan_dir(
-                &config,
+                &project_config,
                 &config_dir_path.join(source),
                 &mut main_hashset,
                 &mut h_h_link,
@@ -113,7 +133,7 @@ fn main() -> io::Result<()> {
             &h_c_link,
             &mut hash_hashmap,
             &new_hash_hashmap,
-        )?;
+        );
 
         print!("{} file", files_to_compile.len());
 
@@ -141,13 +161,13 @@ fn main() -> io::Result<()> {
                     .to_string_lossy()
             );
 
-            let mut command = Command::new(&config.compiler);
+            let mut command = Command::new(&project_config.compiler);
 
             if !args.release {
                 command.arg("-g").arg("-Wall");
             }
 
-            for include in config.includes.iter() {
+            for include in project_config.includes.iter() {
                 command.arg("-I").arg(include);
             }
 
@@ -164,7 +184,7 @@ fn main() -> io::Result<()> {
         }
 
         let files_to_link = link(
-            &config,
+            &project_config,
             &main_hashset,
             &files_to_compile,
             &h_c_link,
@@ -204,7 +224,7 @@ fn main() -> io::Result<()> {
                     .to_string_lossy()
             );
 
-            let mut command = Command::new(&config.compiler);
+            let mut command = Command::new(&project_config.compiler);
 
             if !args.release {
                 command.arg("-g").arg("-Wall");
@@ -214,8 +234,16 @@ fn main() -> io::Result<()> {
                 command.arg(objects_dir_path.join(new_hash_hashmap[&c_file].to_hex().as_str()));
             }
 
+            command
+                .arg("-L")
+                .arg("/usr/local/lib/")
+                .arg("-Wl,-rpath")
+                .arg("/usr/lib/")
+                .arg("-Wl,-rpath")
+                .arg("/lib/x86_64-linux-gnu/");
+
             for lib in {
-                let mut libs: Vec<&LibConfig> = config.libraries.values().collect();
+                let mut libs: Vec<&LibConfig> = project_config.libraries.values().collect();
 
                 libs.reverse();
                 libs
@@ -264,18 +292,18 @@ fn main() -> io::Result<()> {
             }
         }
 
-        save_hash_file(config_dir_path, &new_hash_hashmap)?;
+        new_hash_hashmap.save(config_dir_path)?;
 
         return Ok(());
     }
 
-    eprintln!("No config file found !");
+    eprintln!("No project config file found !");
 
     return Ok(());
 }
 
 fn scan_dir(
-    config: &Config,
+    project_config: &ProjectConfig,
     dir_path: &Path,
     main_hashset: &mut HashSet<PathBuf>,
     h_h_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
@@ -284,50 +312,51 @@ fn scan_dir(
     hash_hashmap: &mut HashMap<PathBuf, Hash>,
 ) -> io::Result<()> {
     for entry in read_dir(dir_path)? {
-        let entry = entry?;
-        let path = entry.path();
+        if let Ok(entry) = entry {
+            let path = entry.path();
 
-        if path.is_file() {
-            let extension = path.extension().unwrap_or_default();
+            if path.is_file() {
+                let extension = path.extension().unwrap_or_default();
 
-            if extension == "c" || extension == "h" {
-                let code = read_to_string(&path).unwrap();
-                let includes = get_includes(&path, config.includes.clone(), &code);
+                if extension == "c" || extension == "h" {
+                    let code = read_to_string(&path).unwrap();
+                    let includes = get_includes(&path, project_config.includes.clone(), &code);
 
-                if extension == "c" {
-                    c_h_link.insert(path.to_path_buf(), includes.clone());
-
-                    if has_main(&code) {
-                        main_hashset.insert(path.to_path_buf());
-                    }
-                }
-
-                hash_hashmap.insert(path.to_path_buf(), hash(code.as_bytes()));
-
-                for include in includes {
                     if extension == "c" {
-                        h_c_link
-                            .entry(include)
-                            .or_insert(HashSet::new())
-                            .insert(path.clone());
-                    } else {
-                        h_h_link
-                            .entry(include)
-                            .or_insert(HashSet::new())
-                            .insert(path.clone());
+                        c_h_link.insert(path.to_path_buf(), includes.clone());
+
+                        if has_main(&code) {
+                            main_hashset.insert(path.to_path_buf());
+                        }
+                    }
+
+                    hash_hashmap.insert(path.to_path_buf(), hash(code.as_bytes()));
+
+                    for include in includes {
+                        if extension == "c" {
+                            h_c_link
+                                .entry(include)
+                                .or_insert(HashSet::new())
+                                .insert(path.clone());
+                        } else {
+                            h_h_link
+                                .entry(include)
+                                .or_insert(HashSet::new())
+                                .insert(path.clone());
+                        }
                     }
                 }
+            } else if path.is_dir() {
+                scan_dir(
+                    project_config,
+                    &path,
+                    main_hashset,
+                    h_h_link,
+                    h_c_link,
+                    c_h_link,
+                    hash_hashmap,
+                )?;
             }
-        } else if path.is_dir() {
-            scan_dir(
-                config,
-                &path,
-                main_hashset,
-                h_h_link,
-                h_c_link,
-                c_h_link,
-                hash_hashmap,
-            )?;
         }
     }
 
@@ -378,26 +407,4 @@ fn has_main(code: &String) -> bool {
     Regex::new(r"(void|int)[ \t\n\r]*main[ \t\n\r]*\(")
         .unwrap()
         .is_match(&code)
-}
-
-#[cfg(test)]
-mod tests {
-    use std::fs::read_to_string;
-
-    use super::*;
-
-    #[test]
-    fn getting_includes() {
-        println!(
-            "{:?}",
-            get_includes(
-                Path::new("window/window.c"),
-                vec![
-                    Path::new("./data/src/").to_path_buf(),
-                    Path::new("/usr/include").to_path_buf()
-                ],
-                &read_to_string(Path::new("./data/src/window/window.c")).unwrap()
-            )
-        );
-    }
 }

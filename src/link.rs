@@ -8,10 +8,10 @@ use blake3::Hash;
 use pretok::Pretokenizer;
 use regex::Regex;
 
-use crate::{config::Config, get_includes};
+use crate::{config::ProjectConfig, get_includes};
 
 pub fn link(
-    config: &Config,
+    project_config: &ProjectConfig,
     main_hashset: &HashSet<PathBuf>,
     files_to_compile: &HashMap<PathBuf, Hash>,
     h_c_link: &HashMap<PathBuf, HashSet<PathBuf>>,
@@ -26,7 +26,7 @@ pub fn link(
         let mut need_to_be_link = false;
 
         for h_file in c_h_link[main_file].clone() {
-            find_h(config, &h_file, &mut already_explored_h);
+            find_h(project_config, &h_file, &mut already_explored_h);
 
             already_explored_h.insert(h_file);
         }
@@ -57,15 +57,19 @@ pub fn link(
     files_to_link
 }
 
-fn find_h(config: &Config, h_file: &Path, already_explored_h: &mut HashSet<PathBuf>) {
+fn find_h(
+    project_config: &ProjectConfig,
+    h_file: &Path,
+    already_explored_h: &mut HashSet<PathBuf>,
+) {
     if !already_explored_h.contains(h_file) {
         already_explored_h.insert(h_file.to_path_buf());
 
         let code = read_to_string(&h_file).unwrap();
-        let includes = get_includes(&h_file, config.includes.clone(), &code);
+        let includes = get_includes(&h_file, project_config.includes.clone(), &code);
 
         for include in includes {
-            find_h(config, &include, already_explored_h);
+            find_h(project_config, &include, already_explored_h);
         }
     }
 }

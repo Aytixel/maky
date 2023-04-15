@@ -9,4 +9,3 @@ reg = [
     "(test_(animation|building|game|window)|main_client|gestion_ressources).c$",
 ]
 lib = ["SDL2main", "SDL2", "SDL2_image", "SDL2_ttf"]
-dir = ["/usr/local/lib/", "/usr/lib/", "/lib/x86_64-linux-gnu/", "./"]
