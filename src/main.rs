@@ -11,7 +11,7 @@ use std::{
 };
 
 use blake3::{hash, Hash};
-use clap::{command, Parser};
+use clap::{command, Parser, Subcommand};
 use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
@@ -32,9 +32,31 @@ pub struct Args {
     #[arg(short, long, default_value_t = ("./Maky.toml").to_string())]
     file: String,
 
-    /// Building release
-    #[arg(long)]
-    release: bool,
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Build files
+    Build {
+        /// Build in release mode
+        #[arg(long)]
+        release: bool,
+    },
+
+    /// Build files then run the specified file
+    Run {
+        /// Build in release mode
+        #[arg(long)]
+        release: bool,
+
+        /// Path of the source file to build and run
+        file: PathBuf,
+
+        /// Arguments for the source file to run
+        args: Vec<String>,
+    },
 }
 
 fn main() -> io::Result<()> {
@@ -42,7 +64,11 @@ fn main() -> io::Result<()> {
     let project_config_path = Path::new(&args.file);
     let project_path = project_config_path.parent().unwrap_or(Path::new("./"));
 
-    if let Ok(mut project_config) = ProjectConfig::load(project_config_path) {
+    if let Some(command) = args.command {
+        let release = match command {
+            Commands::Build { release } | Commands::Run { release, .. } => release,
+        };
+
         execute!(
             stdout(),
             SetForegroundColor(Color::parse_ansi("2;118;200;56").unwrap()),
@@ -55,7 +81,7 @@ fn main() -> io::Result<()> {
             SetForegroundColor(Color::parse_ansi("2;54;120;26").unwrap()),
             Print(r"\/    \/\__,_|_|\_\\__, |".to_string() + "\n"),
             SetForegroundColor(Color::Magenta),
-            if args.release {
+            if release {
                 Print(r"Release             ".bold())
             } else {
                 Print(r"Debug               ".bold())
@@ -65,340 +91,388 @@ fn main() -> io::Result<()> {
             ResetColor
         )?;
 
-        let dir_path = project_path.join("./.maky");
-        if !dir_path.is_dir() {
-            create_dir(dir_path)?;
-        }
-
-        let binaries_dir_path = project_path.join(project_config.binaries.clone());
-        if !binaries_dir_path.is_dir() {
-            create_dir(binaries_dir_path.clone())?;
-        }
-
-        for source in project_config.sources.iter() {
-            let sources_dir_path = project_path.join(source);
-
-            if !sources_dir_path.is_dir() {
-                create_dir(sources_dir_path)?;
+        if let Ok(mut project_config) = ProjectConfig::load(project_config_path) {
+            let dir_path = project_path.join("./.maky");
+            if !dir_path.is_dir() {
+                create_dir(dir_path)?;
             }
 
-            project_config.includes.push(project_path.join(source));
-        }
+            let binaries_dir_path = project_path.join(project_config.binaries.clone());
+            if !binaries_dir_path.is_dir() {
+                create_dir(binaries_dir_path.clone())?;
+            }
 
-        let objects_dir_path = project_path.join(project_config.objects.clone());
-        if !objects_dir_path.is_dir() {
-            create_dir(objects_dir_path.clone())?;
-        }
+            for source in project_config.sources.iter() {
+                let sources_dir_path = project_path.join(source);
 
-        project_config
-            .includes
-            .push(project_path.join("/usr/include"));
+                if !sources_dir_path.is_dir() {
+                    create_dir(sources_dir_path)?;
+                }
 
-        let mut config = Config::load(project_path).unwrap_or_default();
-        let mut hash_hashmap = if config.release != args.release {
-            for entry in read_dir(&objects_dir_path)? {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
+                project_config.includes.push(project_path.join(source));
+            }
 
-                    if path.is_file() {
-                        remove_file(path)?;
-                    } else if path.is_dir() {
-                        remove_dir(path)?;
+            let objects_dir_path = project_path.join(project_config.objects.clone());
+            if !objects_dir_path.is_dir() {
+                create_dir(objects_dir_path.clone())?;
+            }
+
+            project_config
+                .includes
+                .push(project_path.join("/usr/include"));
+
+            let mut config = Config::load(project_path).unwrap_or_default();
+            let mut hash_hashmap = if config.release != release {
+                for entry in read_dir(&objects_dir_path)? {
+                    if let Ok(entry) = entry {
+                        let path = entry.path();
+
+                        if path.is_file() {
+                            remove_file(path)?;
+                        } else if path.is_dir() {
+                            remove_dir(path)?;
+                        }
                     }
                 }
+
+                HashMap::new()
+            } else {
+                HashMap::load(project_path).unwrap_or_default()
+            };
+            let mut new_hash_hashmap = HashMap::new();
+            let mut main_hashset = HashSet::new();
+            let mut h_h_link = HashMap::new();
+            let mut h_c_link = HashMap::new();
+            let mut c_h_link = HashMap::new();
+
+            config.release = release;
+            config.save(project_path)?;
+
+            for source in project_config.sources.iter() {
+                scan_dir(
+                    &project_config,
+                    &project_path.join(source),
+                    &mut main_hashset,
+                    &mut h_h_link,
+                    &mut h_c_link,
+                    &mut c_h_link,
+                    &mut new_hash_hashmap,
+                )?;
             }
 
-            HashMap::new()
-        } else {
-            HashMap::load(project_path).unwrap_or_default()
-        };
-        let mut new_hash_hashmap = HashMap::new();
-        let mut main_hashset = HashSet::new();
-        let mut h_h_link = HashMap::new();
-        let mut h_c_link = HashMap::new();
-        let mut c_h_link = HashMap::new();
-
-        config.release = args.release;
-        config.save(project_path)?;
-
-        for source in project_config.sources.iter() {
-            scan_dir(
-                &project_config,
-                &project_path.join(source),
-                &mut main_hashset,
-                &mut h_h_link,
-                &mut h_c_link,
-                &mut c_h_link,
-                &mut new_hash_hashmap,
-            )?;
-        }
-
-        let files_to_compile = compile(
-            &objects_dir_path,
-            &h_h_link,
-            &h_c_link,
-            &mut hash_hashmap,
-            &new_hash_hashmap,
-        );
-
-        let mut compile_progress_bar_option = if files_to_compile.len() > 0 {
-            let mut compile_progress_bar = RichProgress::new(
-                tqdm!(total = files_to_compile.len()),
-                vec![
-                    Column::text("[bold green]Compiling"),
-                    Column::Spinner(
-                        "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-                            .chars()
-                            .map(|x| x.to_string())
-                            .collect::<Vec<String>>(),
-                        80.0,
-                        1.0,
-                    ),
-                    Column::text("[bold blue]?"),
-                    Column::Bar,
-                    Column::Percentage(1),
-                    Column::text("•"),
-                    Column::CountTotal,
-                    Column::text("•"),
-                    Column::ElapsedTime,
-                ],
+            let files_to_compile = compile(
+                &objects_dir_path,
+                &h_h_link,
+                &h_c_link,
+                &mut hash_hashmap,
+                &new_hash_hashmap,
             );
-            compile_progress_bar.refresh();
 
-            Some(compile_progress_bar)
-        } else {
-            None
-        };
+            let mut compile_progress_bar_option = if files_to_compile.len() > 0 {
+                let mut compile_progress_bar = RichProgress::new(
+                    tqdm!(total = files_to_compile.len()),
+                    vec![
+                        Column::text("[bold green]   Compiling"),
+                        Column::Spinner(
+                            "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+                                .chars()
+                                .map(|x| x.to_string())
+                                .collect::<Vec<String>>(),
+                            80.0,
+                            1.0,
+                        ),
+                        Column::text("[bold blue]?"),
+                        Column::Bar,
+                        Column::Percentage(1),
+                        Column::text("•"),
+                        Column::CountTotal,
+                        Column::text("•"),
+                        Column::ElapsedTime,
+                    ],
+                );
+                compile_progress_bar.refresh();
 
-        let mut commands = vec![];
+                Some(compile_progress_bar)
+            } else {
+                None
+            };
 
-        for file in files_to_compile.iter() {
-            let mut command = Command::new(&project_config.compiler);
+            let mut commands = vec![];
 
-            command
-                .stderr(Stdio::piped())
-                .arg("-fdiagnostics-color=always");
+            for file in files_to_compile.iter() {
+                let mut command = Command::new(&project_config.compiler);
 
-            if !args.release {
-                command.arg("-g").arg("-Wall");
-            }
-
-            for include in project_config.includes.iter() {
-                command.arg("-I").arg(include);
-            }
-
-            commands.push((
-                file.0,
                 command
-                    .arg("-c")
-                    .arg(file.0)
-                    .arg("-o")
-                    .arg(objects_dir_path.join(file.1.to_hex().as_str()))
-                    .spawn()
-                    .unwrap(),
-            ));
-        }
+                    .stderr(Stdio::piped())
+                    .arg("-fdiagnostics-color=always");
 
-        let files_to_link = link(
-            &project_config,
-            &main_hashset,
-            &files_to_compile,
-            &h_c_link,
-            &c_h_link,
-        );
-
-        let mut err = String::new();
-
-        for (file, mut command) in commands.drain(..) {
-            if let Some(compile_progress_bar) = &mut compile_progress_bar_option {
-                compile_progress_bar.columns[2] = Column::text(
-                    &("[bold blue]".to_string()
-                        + &file
-                            .strip_prefix(project_path)
-                            .unwrap_or(file)
-                            .to_string_lossy()),
-                );
-                compile_progress_bar.update(1);
-            }
-
-            if let Ok(exit_code) = command.wait() {
-                if !exit_code.success() {
-                    new_hash_hashmap.remove(file);
+                if !release {
+                    command.arg("-g").arg("-Wall");
                 }
 
-                command.stderr.unwrap().read_to_string(&mut err)?;
-            } else {
-                new_hash_hashmap.remove(file);
+                for include in project_config.includes.iter() {
+                    command.arg("-I").arg(include);
+                }
+
+                commands.push((
+                    file.0,
+                    command
+                        .arg("-c")
+                        .arg(file.0)
+                        .arg("-o")
+                        .arg(objects_dir_path.join(file.1.to_hex().as_str()))
+                        .spawn()
+                        .unwrap(),
+                ));
             }
-        }
 
-        if !err.is_empty() {
-            execute!(
-                stderr(),
-                SetForegroundColor(Color::Red),
-                Print("\n\nWarnings & Errors :\n\n".bold()),
-                ResetColor,
-            )?;
-
-            eprintln!("{err}");
-        }
-
-        let mut link_progress_bar_option = if files_to_link.len() > 0 {
-            let mut link_progress_bar = RichProgress::new(
-                tqdm!(total = files_to_link.len()),
-                vec![
-                    Column::text("[bold green]Linking"),
-                    Column::Spinner(
-                        "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-                            .chars()
-                            .map(|x| x.to_string())
-                            .collect::<Vec<String>>(),
-                        80.0,
-                        1.0,
-                    ),
-                    Column::text("[bold blue]?"),
-                    Column::Bar,
-                    Column::Percentage(1),
-                    Column::text("•"),
-                    Column::CountTotal,
-                    Column::text("•"),
-                    Column::ElapsedTime,
-                ],
+            let files_to_link = link(
+                &project_config,
+                &main_hashset,
+                &files_to_compile,
+                &h_c_link,
+                &c_h_link,
             );
-            link_progress_bar.refresh();
 
-            Some(link_progress_bar)
-        } else {
-            None
-        };
+            let mut err = String::new();
 
-        for (main_file, file_to_link) in &files_to_link {
-            let mut command = Command::new(&project_config.compiler);
+            for (file, mut command) in commands.drain(..) {
+                if let Some(compile_progress_bar) = &mut compile_progress_bar_option {
+                    compile_progress_bar.columns[2] = Column::text(
+                        &("[bold blue]".to_string()
+                            + &file
+                                .strip_prefix(project_path)
+                                .unwrap_or(file)
+                                .to_string_lossy()),
+                    );
+                    compile_progress_bar.update(1);
+                }
 
-            command
-                .stderr(Stdio::piped())
-                .arg("-fdiagnostics-color=always");
-
-            if !args.release {
-                command.arg("-g").arg("-Wall");
-            }
-
-            for c_file in file_to_link {
-                command.arg(objects_dir_path.join(new_hash_hashmap[c_file].to_hex().as_str()));
-            }
-
-            command
-                .arg("-L")
-                .arg("/usr/local/lib/")
-                .arg("-Wl,-rpath")
-                .arg("/usr/lib/")
-                .arg("-Wl,-rpath")
-                .arg("/lib/x86_64-linux-gnu/");
-
-            for lib in {
-                let mut libs: Vec<&LibConfig> = project_config.libraries.values().collect();
-
-                libs.reverse();
-                libs
-            } {
-                if !lib.regex.is_empty() {
-                    if !lib
-                        .regex
-                        .iter()
-                        .any(|regex| regex.is_match(&main_file.to_string_lossy()))
-                    {
-                        continue;
+                if let Ok(exit_code) = command.wait() {
+                    if !exit_code.success() {
+                        new_hash_hashmap.remove(file);
                     }
-                }
 
-                let mut lib_dir_iter = lib.directories.iter();
-
-                if let Some(lib_dir) = lib_dir_iter.next() {
-                    command.arg("-L").arg(lib_dir);
-
-                    for lib_dir in lib_dir_iter {
-                        command.arg("-Wl,-rpath").arg(lib_dir);
-                    }
-                }
-
-                for lib in lib.library.iter() {
-                    command.arg("-l".to_string() + lib);
-                }
-            }
-
-            let output_path = binaries_dir_path
-                .join(if args.release {
-                    Path::new("release")
+                    command.stderr.unwrap().read_to_string(&mut err)?;
                 } else {
-                    Path::new("debug")
-                })
-                .join(
-                    main_file
-                        .parent()
-                        .unwrap_or(Path::new("./"))
-                        .strip_prefix(project_path)
-                        .unwrap_or(Path::new("./")),
-                );
-            let mut output_file = output_path.join(main_file.file_stem().unwrap());
-
-            create_dir_all(output_path).unwrap();
-
-            output_file.set_extension("out");
-            commands.push((
-                main_file,
-                command.arg("-o").arg(output_file).spawn().unwrap(),
-            ));
-        }
-
-        let mut err = String::new();
-
-        for (file, mut command) in commands.drain(..) {
-            if let Some(link_progress_bar) = &mut link_progress_bar_option {
-                link_progress_bar.columns[2] = Column::text(
-                    &("[bold blue]".to_string()
-                        + &file
-                            .strip_prefix(project_path)
-                            .unwrap_or(file)
-                            .to_string_lossy()),
-                );
-                link_progress_bar.update(1);
-            }
-
-            if let Ok(exit_code) = command.wait() {
-                if !exit_code.success() {
                     new_hash_hashmap.remove(file);
                 }
-
-                command.stderr.unwrap().read_to_string(&mut err)?;
-            } else {
-                new_hash_hashmap.remove(file);
             }
-        }
 
-        new_hash_hashmap.save(project_path)?;
+            if !err.is_empty() {
+                execute!(
+                    stderr(),
+                    SetForegroundColor(Color::Red),
+                    Print("\n\nWarnings & Errors :\n\n".bold()),
+                    ResetColor,
+                )?;
 
-        if !err.is_empty() {
+                eprintln!("{err}");
+            }
+
+            let mut link_progress_bar_option = if files_to_link.len() > 0 {
+                let mut link_progress_bar = RichProgress::new(
+                    tqdm!(total = files_to_link.len()),
+                    vec![
+                        Column::text("[bold green]     Linking"),
+                        Column::Spinner(
+                            "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+                                .chars()
+                                .map(|x| x.to_string())
+                                .collect::<Vec<String>>(),
+                            80.0,
+                            1.0,
+                        ),
+                        Column::text("[bold blue]?"),
+                        Column::Bar,
+                        Column::Percentage(1),
+                        Column::text("•"),
+                        Column::CountTotal,
+                        Column::text("•"),
+                        Column::ElapsedTime,
+                    ],
+                );
+                link_progress_bar.refresh();
+
+                Some(link_progress_bar)
+            } else {
+                None
+            };
+
+            for (main_file, file_to_link) in &files_to_link {
+                let mut command = Command::new(&project_config.compiler);
+
+                command
+                    .stderr(Stdio::piped())
+                    .arg("-fdiagnostics-color=always");
+
+                if !release {
+                    command.arg("-g").arg("-Wall");
+                }
+
+                for c_file in file_to_link {
+                    command.arg(objects_dir_path.join(new_hash_hashmap[c_file].to_hex().as_str()));
+                }
+
+                command
+                    .arg("-L")
+                    .arg("/usr/local/lib/")
+                    .arg("-Wl,-rpath")
+                    .arg("/usr/lib/")
+                    .arg("-Wl,-rpath")
+                    .arg("/lib/x86_64-linux-gnu/");
+
+                for lib in {
+                    let mut libs: Vec<&LibConfig> = project_config.libraries.values().collect();
+
+                    libs.reverse();
+                    libs
+                } {
+                    if !lib.regex.is_empty() {
+                        if !lib
+                            .regex
+                            .iter()
+                            .any(|regex| regex.is_match(&main_file.to_string_lossy()))
+                        {
+                            continue;
+                        }
+                    }
+
+                    let mut lib_dir_iter = lib.directories.iter();
+
+                    if let Some(lib_dir) = lib_dir_iter.next() {
+                        command.arg("-L").arg(lib_dir);
+
+                        for lib_dir in lib_dir_iter {
+                            command.arg("-Wl,-rpath").arg(lib_dir);
+                        }
+                    }
+
+                    for lib in lib.library.iter() {
+                        command.arg("-l".to_string() + lib);
+                    }
+                }
+
+                let output_path = binaries_dir_path
+                    .join(if release {
+                        Path::new("release")
+                    } else {
+                        Path::new("debug")
+                    })
+                    .join(
+                        main_file
+                            .parent()
+                            .unwrap_or(Path::new("./"))
+                            .strip_prefix(project_path)
+                            .unwrap_or(Path::new("./")),
+                    );
+                let mut output_file = output_path.join(main_file.file_stem().unwrap());
+
+                create_dir_all(output_path).unwrap();
+
+                if cfg!(windows) {
+                    output_file.set_extension("exe");
+                }
+
+                commands.push((
+                    main_file,
+                    command.arg("-o").arg(output_file).spawn().unwrap(),
+                ));
+            }
+
+            let mut err = String::new();
+
+            for (file, mut command) in commands.drain(..) {
+                if let Some(link_progress_bar) = &mut link_progress_bar_option {
+                    link_progress_bar.columns[2] = Column::text(
+                        &("[bold blue]".to_string()
+                            + &file
+                                .strip_prefix(project_path)
+                                .unwrap_or(file)
+                                .to_string_lossy()),
+                    );
+                    link_progress_bar.update(1);
+                }
+
+                if let Ok(exit_code) = command.wait() {
+                    if !exit_code.success() {
+                        new_hash_hashmap.remove(file);
+                    }
+
+                    command.stderr.unwrap().read_to_string(&mut err)?;
+                } else {
+                    new_hash_hashmap.remove(file);
+                }
+            }
+
+            new_hash_hashmap.save(project_path)?;
+
+            if !err.is_empty() {
+                execute!(
+                    stderr(),
+                    SetForegroundColor(Color::Red),
+                    Print("\n\nWarnings & Errors :\n\n".bold()),
+                    ResetColor,
+                )?;
+
+                eprintln!("{err}");
+            }
+
             execute!(
-                stderr(),
-                SetForegroundColor(Color::Red),
-                Print("\n\nWarnings & Errors :\n\n".bold()),
+                stdout(),
+                SetForegroundColor(Color::Green),
+                Print("    Finished ".bold()),
                 ResetColor,
+                Print(if release {
+                    "release [optimized] target(s)\n"
+                } else {
+                    "dev [unoptimized + debuginfo] target(s)\n"
+                })
             )?;
 
-            eprintln!("{err}");
+            if let Commands::Run { file, args, .. } = command {
+                let mut output_file = binaries_dir_path
+                    .join(if release {
+                        Path::new("release")
+                    } else {
+                        Path::new("debug")
+                    })
+                    .join(file);
+
+                if cfg!(windows) {
+                    output_file.set_extension("exe");
+                }
+
+                if output_file.exists() {
+                    execute!(
+                        stdout(),
+                        SetForegroundColor(Color::Green),
+                        Print("     Running ".bold()),
+                        ResetColor,
+                        Print("`"),
+                        Print(output_file.to_string_lossy()),
+                        Print("`\n")
+                    )?;
+
+                    Command::new(output_file)
+                        .args(args)
+                        .stdout(Stdio::inherit())
+                        .stderr(Stdio::inherit())
+                        .output()
+                        .unwrap();
+                }
+            }
+
+            return Ok(());
         }
 
         execute!(
-            stdout(),
-            SetForegroundColor(Color::Green),
-            Print("Finished\n".bold()),
-            ResetColor
+            stderr(),
+            SetForegroundColor(Color::Red),
+            Print("Project config file found !\n".bold()),
+            ResetColor,
         )?;
-
-        return Ok(());
     }
-
-    eprintln!("No project config file found !");
 
     return Ok(());
 }
