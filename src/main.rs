@@ -84,7 +84,7 @@ fn main() -> io::Result<()> {
             if release {
                 Print(r"Release             ".bold())
             } else {
-                Print(r"Debug               ".bold())
+                Print(r"Dev                 ".bold())
             },
             SetForegroundColor(Color::parse_ansi("2;24;80;11").unwrap()),
             Print(r"|___/".to_string() + "\n\n"),
@@ -451,6 +451,16 @@ fn main() -> io::Result<()> {
                         ResetColor,
                         Print("`"),
                         Print(output_file.to_string_lossy()),
+                        Print(
+                            match args
+                                .clone()
+                                .drain(..)
+                                .reduce(|accumulator, arg| accumulator + " " + &arg)
+                            {
+                                Some(value) => " ".to_string() + &value,
+                                None => "".to_string(),
+                            }
+                        ),
                         Print("`\n")
                     )?;
 
