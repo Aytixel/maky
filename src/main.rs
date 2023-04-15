@@ -8,6 +8,7 @@ use std::{
     io::{self, stderr, stdout, Read},
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    time::Instant,
 };
 
 use blake3::{hash, Hash};
@@ -68,6 +69,7 @@ fn main() -> io::Result<()> {
         let release = match command {
             Commands::Build { release } | Commands::Run { release, .. } => release,
         };
+        let time = Instant::now();
 
         execute!(
             stdout(),
@@ -424,10 +426,11 @@ fn main() -> io::Result<()> {
                 Print("    Finished ".bold()),
                 ResetColor,
                 Print(if release {
-                    "release [optimized] target(s)\n"
+                    "release [optimized]"
                 } else {
-                    "dev [unoptimized + debuginfo] target(s)\n"
-                })
+                    "dev [unoptimized + debuginfo]"
+                }),
+                Print(format!(" target(s) in {:.2?}\n", time.elapsed()))
             )?;
 
             if let Commands::Run { file, args, .. } = command {
