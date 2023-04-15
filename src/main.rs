@@ -4,18 +4,19 @@ mod link;
 
 use std::{
     collections::{HashMap, HashSet},
-    fs::{create_dir, create_dir_all, read_dir, read_to_string, remove_file},
-    io::{self, stdout},
+    fs::{create_dir, create_dir_all, read_dir, read_to_string, remove_dir, remove_file},
+    io::{self, stderr, stdout, Read},
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
 };
 
 use blake3::{hash, Hash};
 use clap::{command, Parser};
 use crossterm::{
     execute,
-    style::{Color, Print, ResetColor, SetForegroundColor},
+    style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
+use kdam::{tqdm, BarExt, Column, RichProgress};
 use regex::Regex;
 
 use crate::{
@@ -53,8 +54,14 @@ fn main() -> io::Result<()> {
             Print(r"/ /\/\ \ (_| |   <| |_| |".to_string() + "\n"),
             SetForegroundColor(Color::parse_ansi("2;54;120;26").unwrap()),
             Print(r"\/    \/\__,_|_|\_\\__, |".to_string() + "\n"),
+            SetForegroundColor(Color::Magenta),
+            if args.release {
+                Print(r"Release             ".bold())
+            } else {
+                Print(r"Debug               ".bold())
+            },
             SetForegroundColor(Color::parse_ansi("2;24;80;11").unwrap()),
-            Print(r"                    |___/".to_string() + "\n"),
+            Print(r"|___/".to_string() + "\n\n"),
             ResetColor
         )?;
 
@@ -87,12 +94,6 @@ fn main() -> io::Result<()> {
             .includes
             .push(project_path.join("/usr/include"));
 
-        if args.release {
-            println!("Release mode.\n");
-        } else {
-            println!("Debug mode.\n");
-        }
-
         let mut config = Config::load(project_path).unwrap_or_default();
         let mut hash_hashmap = if config.release != args.release {
             for entry in read_dir(&objects_dir_path)? {
@@ -100,7 +101,9 @@ fn main() -> io::Result<()> {
                     let path = entry.path();
 
                     if path.is_file() {
-                        remove_file(path).ok();
+                        remove_file(path)?;
+                    } else if path.is_dir() {
+                        remove_dir(path)?;
                     }
                 }
             }
@@ -138,33 +141,43 @@ fn main() -> io::Result<()> {
             &new_hash_hashmap,
         );
 
-        print!("{} file", files_to_compile.len());
+        let mut compile_progress_bar_option = if files_to_compile.len() > 0 {
+            let mut compile_progress_bar = RichProgress::new(
+                tqdm!(total = files_to_compile.len()),
+                vec![
+                    Column::text("[bold green]Compiling"),
+                    Column::Spinner(
+                        "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+                            .chars()
+                            .map(|x| x.to_string())
+                            .collect::<Vec<String>>(),
+                        80.0,
+                        1.0,
+                    ),
+                    Column::text("[bold blue]?"),
+                    Column::Bar,
+                    Column::Percentage(1),
+                    Column::text("•"),
+                    Column::CountTotal,
+                    Column::text("•"),
+                    Column::ElapsedTime,
+                ],
+            );
+            compile_progress_bar.refresh();
 
-        if files_to_compile.len() > 1 {
-            print!("s");
-        }
-
-        print!(" to compile");
-
-        if files_to_compile.len() > 0 {
-            println!(" :");
+            Some(compile_progress_bar)
         } else {
-            println!(".");
-        }
+            None
+        };
 
         let mut commands = vec![];
 
         for file in files_to_compile.iter() {
-            println!(
-                "  - {}",
-                &file
-                    .0
-                    .strip_prefix(project_path)
-                    .unwrap_or(file.0)
-                    .to_string_lossy()
-            );
-
             let mut command = Command::new(&project_config.compiler);
+
+            command
+                .stderr(Stdio::piped())
+                .arg("-fdiagnostics-color=always");
 
             if !args.release {
                 command.arg("-g").arg("-Wall");
@@ -194,40 +207,77 @@ fn main() -> io::Result<()> {
             &c_h_link,
         );
 
+        let mut err = String::new();
+
         for (file, mut command) in commands.drain(..) {
+            if let Some(compile_progress_bar) = &mut compile_progress_bar_option {
+                compile_progress_bar.columns[2] = Column::text(
+                    &("[bold blue]".to_string()
+                        + &file
+                            .strip_prefix(project_path)
+                            .unwrap_or(file)
+                            .to_string_lossy()),
+                );
+                compile_progress_bar.update(1);
+            }
+
             if let Ok(exit_code) = command.wait() {
                 if !exit_code.success() {
                     new_hash_hashmap.remove(file);
                 }
+
+                command.stderr.unwrap().read_to_string(&mut err)?;
             } else {
                 new_hash_hashmap.remove(file);
             }
         }
 
-        print!("{} file", files_to_link.len());
+        if !err.is_empty() {
+            execute!(
+                stderr(),
+                SetForegroundColor(Color::Red),
+                Print("\n\nWarnings & Errors :\n\n".bold()),
+                ResetColor,
+            )?;
 
-        if files_to_link.len() > 1 {
-            print!("s");
+            eprintln!("{err}");
         }
 
-        print!(" to link");
+        let mut link_progress_bar_option = if files_to_link.len() > 0 {
+            let mut link_progress_bar = RichProgress::new(
+                tqdm!(total = files_to_link.len()),
+                vec![
+                    Column::text("[bold green]Linking"),
+                    Column::Spinner(
+                        "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+                            .chars()
+                            .map(|x| x.to_string())
+                            .collect::<Vec<String>>(),
+                        80.0,
+                        1.0,
+                    ),
+                    Column::text("[bold blue]?"),
+                    Column::Bar,
+                    Column::Percentage(1),
+                    Column::text("•"),
+                    Column::CountTotal,
+                    Column::text("•"),
+                    Column::ElapsedTime,
+                ],
+            );
+            link_progress_bar.refresh();
 
-        if files_to_link.len() > 0 {
-            println!(" :");
+            Some(link_progress_bar)
         } else {
-            println!(".");
-        }
+            None
+        };
 
         for (main_file, file_to_link) in &files_to_link {
-            println!(
-                "  - {}",
-                &main_file
-                    .strip_prefix(project_path)
-                    .unwrap_or(&main_file)
-                    .to_string_lossy()
-            );
-
             let mut command = Command::new(&project_config.compiler);
+
+            command
+                .stderr(Stdio::piped())
+                .arg("-fdiagnostics-color=always");
 
             if !args.release {
                 command.arg("-g").arg("-Wall");
@@ -300,17 +350,50 @@ fn main() -> io::Result<()> {
             ));
         }
 
+        let mut err = String::new();
+
         for (file, mut command) in commands.drain(..) {
+            if let Some(link_progress_bar) = &mut link_progress_bar_option {
+                link_progress_bar.columns[2] = Column::text(
+                    &("[bold blue]".to_string()
+                        + &file
+                            .strip_prefix(project_path)
+                            .unwrap_or(file)
+                            .to_string_lossy()),
+                );
+                link_progress_bar.update(1);
+            }
+
             if let Ok(exit_code) = command.wait() {
                 if !exit_code.success() {
                     new_hash_hashmap.remove(file);
                 }
+
+                command.stderr.unwrap().read_to_string(&mut err)?;
             } else {
                 new_hash_hashmap.remove(file);
             }
         }
 
         new_hash_hashmap.save(project_path)?;
+
+        if !err.is_empty() {
+            execute!(
+                stderr(),
+                SetForegroundColor(Color::Red),
+                Print("\n\nWarnings & Errors :\n\n".bold()),
+                ResetColor,
+            )?;
+
+            eprintln!("{err}");
+        }
+
+        execute!(
+            stdout(),
+            SetForegroundColor(Color::Green),
+            Print("Finished\n".bold()),
+            ResetColor
+        )?;
 
         return Ok(());
     }
