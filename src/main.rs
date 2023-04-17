@@ -3,6 +3,7 @@ mod config;
 mod link;
 
 use std::{
+    env,
     fs::{create_dir, create_dir_all, read_dir, read_to_string, remove_dir, remove_file, write},
     io::{self, stderr, stdout, ErrorKind, Read},
     path::{Path, PathBuf},
@@ -169,9 +170,11 @@ fn build_run(command: &Commands) -> io::Result<()> {
                 create_dir(objects_dir_path.clone())?;
             }
 
-            project_config
-                .includes
-                .push(project_path.join("/usr/include"));
+            if cfg!(target_os = "linux") {
+                project_config
+                    .includes
+                    .push(project_path.join("/usr/include"));
+            }
 
             let mut config = Config::load(project_path).unwrap_or_default();
             let mut hash_hashmap = if config.release != release {
@@ -394,13 +397,15 @@ fn build_run(command: &Commands) -> io::Result<()> {
                     command.arg(objects_dir_path.join(new_hash_hashmap[c_file].to_hex().as_str()));
                 }
 
-                command
-                    .arg("-L")
-                    .arg("/usr/local/lib/")
-                    .arg("-Wl,-rpath")
-                    .arg("/usr/lib/")
-                    .arg("-Wl,-rpath")
-                    .arg("/lib/x86_64-linux-gnu/");
+                if cfg!(target_os = "linux") {
+                    command
+                        .arg("-L")
+                        .arg("/usr/local/lib/")
+                        .arg("-Wl,-rpath")
+                        .arg("/usr/lib/")
+                        .arg("-Wl,-rpath")
+                        .arg("/lib/x86_64-linux-gnu/");
+                }
 
                 for lib in {
                     let mut libs: Vec<&LibConfig> = project_config.libraries.values().collect();
@@ -450,9 +455,7 @@ fn build_run(command: &Commands) -> io::Result<()> {
 
                 create_dir_all(output_path).unwrap();
 
-                if cfg!(windows) {
-                    output_file.set_extension("exe");
-                }
+                output_file.set_extension(env::consts::EXE_EXTENSION);
 
                 commands.push((
                     main_file,
@@ -545,9 +548,7 @@ fn build_run(command: &Commands) -> io::Result<()> {
                     })
                     .join(file);
 
-                if cfg!(windows) {
-                    output_file.set_extension("exe");
-                }
+                output_file.set_extension(env::consts::EXE_EXTENSION);
 
                 if output_file.exists() {
                     execute!(
