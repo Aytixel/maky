@@ -284,7 +284,7 @@ fn build_run(command: &Commands) -> io::Result<()> {
                 &files_to_compile,
                 &h_c_link,
                 &c_h_link,
-            );
+            )?;
 
             let mut errors = vec![];
 
@@ -618,7 +618,7 @@ fn scan_dir(
                 let extension = path.extension().unwrap_or_default();
 
                 if extension == "c" || extension == "h" {
-                    let code = read_to_string(&path).unwrap();
+                    let code = &read_to_string(&path)?;
                     let includes = get_includes(&path, project_config.includes.clone(), &code);
 
                     if extension == "c" {

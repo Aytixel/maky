@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs::read_to_string,
+    io,
     path::{Path, PathBuf},
 };
 
@@ -16,8 +17,8 @@ pub fn link(
     files_to_compile: &HashMap<PathBuf, Hash>,
     h_c_link: &HashMap<PathBuf, HashSet<PathBuf>>,
     c_h_link: &HashMap<PathBuf, HashSet<PathBuf>>,
-) -> Vec<(PathBuf, HashSet<PathBuf>)> {
-    let h_c_link_filtered = filter_h_c_link(h_c_link);
+) -> io::Result<Vec<(PathBuf, HashSet<PathBuf>)>> {
+    let h_c_link_filtered = filter_h_c_link(h_c_link)?;
     let mut files_to_link = vec![];
 
     for main_file in main_hashset.iter() {
@@ -26,7 +27,7 @@ pub fn link(
         let mut need_to_be_link = false;
 
         for h_file in c_h_link[main_file].clone() {
-            find_h(project_config, &h_file, &mut already_explored_h);
+            find_h(project_config, &h_file, &mut already_explored_h)?;
 
             already_explored_h.insert(h_file);
         }
@@ -54,37 +55,39 @@ pub fn link(
         }
     }
 
-    files_to_link
+    Ok(files_to_link)
 }
 
 fn find_h(
     project_config: &ProjectConfig,
     h_file: &Path,
     already_explored_h: &mut HashSet<PathBuf>,
-) {
+) -> io::Result<()> {
     if !already_explored_h.contains(h_file) {
         already_explored_h.insert(h_file.to_path_buf());
 
-        let code = read_to_string(&h_file).unwrap();
+        let code = &read_to_string(&h_file)?;
         let includes = get_includes(&h_file, project_config.includes.clone(), &code);
 
         for include in includes {
-            find_h(project_config, &include, already_explored_h);
+            find_h(project_config, &include, already_explored_h)?;
         }
     }
+
+    Ok(())
 }
 
 fn filter_h_c_link(
     h_c_link: &HashMap<PathBuf, HashSet<PathBuf>>,
-) -> HashMap<PathBuf, HashSet<PathBuf>> {
+) -> io::Result<HashMap<PathBuf, HashSet<PathBuf>>> {
     let mut link_filtered: HashMap<PathBuf, HashSet<PathBuf>> = HashMap::new();
 
     for (h_file, c_files) in h_c_link.iter() {
-        let h_code = read_to_string(&h_file).unwrap();
+        let h_code = &read_to_string(&h_file)?;
         let h_prototypes = get_prototypes(&h_code);
 
         for c_file in c_files {
-            let c_code = read_to_string(&c_file).unwrap();
+            let c_code = &read_to_string(&c_file)?;
             let c_prototypes = get_prototypes(&c_code);
 
             if c_prototypes.iter().any(|c_prototype| {
@@ -100,7 +103,7 @@ fn filter_h_c_link(
         }
     }
 
-    link_filtered
+    Ok(link_filtered)
 }
 
 fn get_prototypes(code: &String) -> HashSet<String> {
