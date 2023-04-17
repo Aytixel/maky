@@ -1,19 +1,19 @@
 use std::{
-    collections::{HashMap, HashSet},
     fs::remove_file,
     path::{Path, PathBuf},
 };
 
+use ahash::{AHashMap, AHashSet};
 use blake3::Hash;
 
 pub fn compile(
     objects_dir_path: &Path,
-    h_h_link: &HashMap<PathBuf, HashSet<PathBuf>>,
-    h_c_link: &HashMap<PathBuf, HashSet<PathBuf>>,
-    hash_hashmap: &mut HashMap<PathBuf, Hash>,
-    new_hash_hashmap: &HashMap<PathBuf, Hash>,
-) -> HashMap<PathBuf, Hash> {
-    let mut files_to_compile = HashMap::new();
+    h_h_link: &AHashMap<PathBuf, AHashSet<PathBuf>>,
+    h_c_link: &AHashMap<PathBuf, AHashSet<PathBuf>>,
+    hash_hashmap: &mut AHashMap<PathBuf, Hash>,
+    new_hash_hashmap: &AHashMap<PathBuf, Hash>,
+) -> AHashMap<PathBuf, Hash> {
+    let mut files_to_compile = AHashMap::new();
     let mut new_hash_hashmap_clone = new_hash_hashmap.clone();
 
     for new_hash in new_hash_hashmap.clone() {
@@ -39,7 +39,7 @@ pub fn compile(
         }
     }
 
-    let mut already_explored = HashSet::new();
+    let mut already_explored = AHashSet::new();
 
     for new_hash in new_hash_hashmap_clone.iter() {
         find_c_from_h(
@@ -65,11 +65,11 @@ pub fn compile(
 
 fn find_c_from_h(
     file: &Path,
-    h_h_link: &HashMap<PathBuf, HashSet<PathBuf>>,
-    h_c_link: &HashMap<PathBuf, HashSet<PathBuf>>,
-    new_hash_hashmap_clone: &HashMap<PathBuf, Hash>,
-    files_to_compile: &mut HashMap<PathBuf, Hash>,
-    already_explored: &mut HashSet<PathBuf>,
+    h_h_link: &AHashMap<PathBuf, AHashSet<PathBuf>>,
+    h_c_link: &AHashMap<PathBuf, AHashSet<PathBuf>>,
+    new_hash_hashmap_clone: &AHashMap<PathBuf, Hash>,
+    files_to_compile: &mut AHashMap<PathBuf, Hash>,
+    already_explored: &mut AHashSet<PathBuf>,
 ) {
     if !already_explored.contains(file) {
         already_explored.insert(file.to_path_buf());

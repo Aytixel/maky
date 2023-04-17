@@ -5,6 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use ahash::AHashMap;
 use blake3::Hash;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -130,10 +131,10 @@ impl LibConfig {
     }
 }
 
-impl LoadConfig for HashMap<PathBuf, Hash> {
+impl LoadConfig for AHashMap<PathBuf, Hash> {
     fn load(project_path: &Path) -> io::Result<Self> {
         let hash_file = read_to_string(project_path.join(".maky/hash"))?;
-        let mut hash_hashmap = HashMap::new();
+        let mut hash_hashmap = AHashMap::new();
         let mut hash_path = Path::new("");
 
         for (index, line) in hash_file.lines().enumerate() {
@@ -150,7 +151,7 @@ impl LoadConfig for HashMap<PathBuf, Hash> {
     }
 }
 
-impl SaveConfig for HashMap<PathBuf, Hash> {
+impl SaveConfig for AHashMap<PathBuf, Hash> {
     fn save(&self, project_path: &Path) -> io::Result<()> {
         let mut data = vec![];
 

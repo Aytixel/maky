@@ -3,7 +3,6 @@ mod config;
 mod link;
 
 use std::{
-    collections::{HashMap, HashSet},
     fs::{create_dir, create_dir_all, read_dir, read_to_string, remove_dir, remove_file, write},
     io::{self, stderr, stdout, ErrorKind, Read},
     path::{Path, PathBuf},
@@ -11,6 +10,7 @@ use std::{
     time::Instant,
 };
 
+use ahash::{AHashMap, AHashSet};
 use blake3::{hash, Hash};
 use clap::{command, Parser, Subcommand};
 use crossterm::{
@@ -187,15 +187,15 @@ fn build_run(command: &Commands) -> io::Result<()> {
                     }
                 }
 
-                HashMap::new()
+                AHashMap::new()
             } else {
-                HashMap::load(project_path).unwrap_or_default()
+                AHashMap::load(project_path).unwrap_or_default()
             };
-            let mut new_hash_hashmap = HashMap::new();
-            let mut main_hashset = HashSet::new();
-            let mut h_h_link = HashMap::new();
-            let mut h_c_link = HashMap::new();
-            let mut c_h_link = HashMap::new();
+            let mut new_hash_hashmap = AHashMap::new();
+            let mut main_hashset = AHashSet::new();
+            let mut h_h_link = AHashMap::new();
+            let mut h_c_link = AHashMap::new();
+            let mut c_h_link = AHashMap::new();
 
             config.release = release;
             config.save(project_path)?;
@@ -250,6 +250,12 @@ fn build_run(command: &Commands) -> io::Result<()> {
             };
 
             let mut commands = vec![];
+            let mut include_args = vec![];
+
+            for include in project_config.includes.iter() {
+                include_args.push("-I".to_string());
+                include_args.push(include.to_string_lossy().to_string());
+            }
 
             for file in files_to_compile.iter() {
                 let mut command = Command::new(&project_config.compiler);
@@ -262,13 +268,10 @@ fn build_run(command: &Commands) -> io::Result<()> {
                     command.arg("-g").arg("-Wall");
                 }
 
-                for include in project_config.includes.iter() {
-                    command.arg("-I").arg(include);
-                }
-
                 commands.push((
                     file.0,
                     command
+                        .args(&include_args)
                         .arg("-c")
                         .arg(file.0)
                         .arg("-o")
@@ -604,11 +607,11 @@ fn build_run(command: &Commands) -> io::Result<()> {
 fn scan_dir(
     project_config: &ProjectConfig,
     dir_path: &Path,
-    main_hashset: &mut HashSet<PathBuf>,
-    h_h_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
-    h_c_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
-    c_h_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
-    hash_hashmap: &mut HashMap<PathBuf, Hash>,
+    main_hashset: &mut AHashSet<PathBuf>,
+    h_h_link: &mut AHashMap<PathBuf, AHashSet<PathBuf>>,
+    h_c_link: &mut AHashMap<PathBuf, AHashSet<PathBuf>>,
+    c_h_link: &mut AHashMap<PathBuf, AHashSet<PathBuf>>,
+    hash_hashmap: &mut AHashMap<PathBuf, Hash>,
 ) -> io::Result<()> {
     for entry in read_dir(dir_path)? {
         if let Ok(entry) = entry {
@@ -635,12 +638,12 @@ fn scan_dir(
                         if extension == "c" {
                             h_c_link
                                 .entry(include)
-                                .or_insert(HashSet::new())
+                                .or_insert(AHashSet::new())
                                 .insert(path.clone());
                         } else {
                             h_h_link
                                 .entry(include)
-                                .or_insert(HashSet::new())
+                                .or_insert(AHashSet::new())
                                 .insert(path.clone());
                         }
                     }
@@ -662,8 +665,8 @@ fn scan_dir(
     return Ok(());
 }
 
-fn get_includes(path: &Path, include_path_vec: Vec<PathBuf>, code: &String) -> HashSet<PathBuf> {
-    let mut include_hashset = HashSet::new();
+fn get_includes(path: &Path, include_path_vec: Vec<PathBuf>, code: &String) -> AHashSet<PathBuf> {
+    let mut include_hashset = AHashSet::new();
     let parent_path = path.parent().unwrap_or(Path::new("./")).to_path_buf();
 
     for line in code.lines() {

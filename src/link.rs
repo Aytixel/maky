@@ -1,10 +1,10 @@
 use std::{
-    collections::{HashMap, HashSet},
     fs::read_to_string,
     io,
     path::{Path, PathBuf},
 };
 
+use ahash::{AHashMap, AHashSet};
 use blake3::Hash;
 use pretok::Pretokenizer;
 use regex::Regex;
@@ -13,17 +13,17 @@ use crate::{config::ProjectConfig, get_includes};
 
 pub fn link(
     project_config: &ProjectConfig,
-    main_hashset: &HashSet<PathBuf>,
-    files_to_compile: &HashMap<PathBuf, Hash>,
-    h_c_link: &HashMap<PathBuf, HashSet<PathBuf>>,
-    c_h_link: &HashMap<PathBuf, HashSet<PathBuf>>,
-) -> io::Result<Vec<(PathBuf, HashSet<PathBuf>)>> {
+    main_hashset: &AHashSet<PathBuf>,
+    files_to_compile: &AHashMap<PathBuf, Hash>,
+    h_c_link: &AHashMap<PathBuf, AHashSet<PathBuf>>,
+    c_h_link: &AHashMap<PathBuf, AHashSet<PathBuf>>,
+) -> io::Result<Vec<(PathBuf, AHashSet<PathBuf>)>> {
     let h_c_link_filtered = filter_h_c_link(h_c_link)?;
     let mut files_to_link = vec![];
 
     for main_file in main_hashset.iter() {
-        let mut file_to_link = HashSet::new();
-        let mut already_explored_h = HashSet::new();
+        let mut file_to_link = AHashSet::new();
+        let mut already_explored_h = AHashSet::new();
         let mut need_to_be_link = false;
 
         for h_file in c_h_link[main_file].clone() {
@@ -61,7 +61,7 @@ pub fn link(
 fn find_h(
     project_config: &ProjectConfig,
     h_file: &Path,
-    already_explored_h: &mut HashSet<PathBuf>,
+    already_explored_h: &mut AHashSet<PathBuf>,
 ) -> io::Result<()> {
     if !already_explored_h.contains(h_file) {
         already_explored_h.insert(h_file.to_path_buf());
@@ -78,9 +78,9 @@ fn find_h(
 }
 
 fn filter_h_c_link(
-    h_c_link: &HashMap<PathBuf, HashSet<PathBuf>>,
-) -> io::Result<HashMap<PathBuf, HashSet<PathBuf>>> {
-    let mut link_filtered: HashMap<PathBuf, HashSet<PathBuf>> = HashMap::new();
+    h_c_link: &AHashMap<PathBuf, AHashSet<PathBuf>>,
+) -> io::Result<AHashMap<PathBuf, AHashSet<PathBuf>>> {
+    let mut link_filtered: AHashMap<PathBuf, AHashSet<PathBuf>> = AHashMap::new();
 
     for (h_file, c_files) in h_c_link.iter() {
         let h_code = &read_to_string(&h_file)?;
@@ -97,7 +97,7 @@ fn filter_h_c_link(
             }) {
                 link_filtered
                     .entry(h_file.to_path_buf())
-                    .or_insert(HashSet::new())
+                    .or_insert(AHashSet::new())
                     .insert(c_file.to_path_buf());
             }
         }
@@ -106,8 +106,8 @@ fn filter_h_c_link(
     Ok(link_filtered)
 }
 
-fn get_prototypes(code: &String) -> HashSet<String> {
-    let mut function_prototype_hashset = HashSet::new();
+fn get_prototypes(code: &String) -> AHashSet<String> {
+    let mut function_prototype_hashset = AHashSet::new();
     let mut function_prototype = String::new();
     let mut in_function = false;
 
