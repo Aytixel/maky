@@ -268,7 +268,9 @@ fn build_run(command: &Commands) -> io::Result<()> {
                     .arg("-fdiagnostics-color=always");
 
                 if !release {
-                    command.arg("-g").arg("-Wall");
+                    command.arg("-O0").arg("-g").arg("-Wall");
+                } else {
+                    command.arg("-O2");
                 }
 
                 commands.push((
@@ -391,6 +393,8 @@ fn build_run(command: &Commands) -> io::Result<()> {
 
                 if !release {
                     command.arg("-g").arg("-Wall");
+                } else {
+                    command.arg("-s");
                 }
 
                 for c_file in file_to_link {
