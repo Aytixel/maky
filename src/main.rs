@@ -199,9 +199,9 @@ fn build_run(command: &Commands) -> io::Result<()> {
                 create_dir(dir_path)?;
             }
 
-            let binaries_dir_path = project_path.join(project_config.binaries.clone());
+            let binaries_dir_path = project_path.join(&project_config.binaries);
             if !binaries_dir_path.is_dir() {
-                create_dir(binaries_dir_path.clone())?;
+                create_dir(&binaries_dir_path)?;
             }
 
             for source in project_config.sources.iter() {
@@ -214,9 +214,9 @@ fn build_run(command: &Commands) -> io::Result<()> {
                 project_config.includes.push(project_path.join(source));
             }
 
-            let objects_dir_path = project_path.join(project_config.objects.clone());
+            let objects_dir_path = project_path.join(&project_config.objects);
             if !objects_dir_path.is_dir() {
-                create_dir(objects_dir_path.clone())?;
+                create_dir(&objects_dir_path)?;
             }
 
             if cfg!(target_os = "linux") {
@@ -593,7 +593,8 @@ fn build_run(command: &Commands) -> io::Result<()> {
             )?;
 
             if let Commands::Run { file, args, .. } = command {
-                let mut output_file = binaries_dir_path
+                let mut output_file = project_config
+                    .binaries
                     .join(if release {
                         Path::new("release")
                     } else {
@@ -603,28 +604,35 @@ fn build_run(command: &Commands) -> io::Result<()> {
 
                 output_file.set_extension(env::consts::EXE_EXTENSION);
 
-                if output_file.exists() {
-                    execute!(
-                        stdout(),
-                        SetForegroundColor(Color::DarkGreen),
-                        Print("     Running ".bold()),
-                        ResetColor,
-                        Print("`"),
-                        Print(output_file.to_string_lossy()),
-                        Print(
-                            match args
-                                .clone()
-                                .drain(..)
-                                .reduce(|accumulator, arg| accumulator + " " + &arg)
-                            {
-                                Some(value) => " ".to_string() + &value,
-                                None => "".to_string(),
-                            }
-                        ),
-                        Print("`\n")
-                    )?;
+                let output_file_exist = project_path.join(&output_file).exists();
 
+                execute!(
+                    stdout(),
+                    SetForegroundColor(if output_file_exist {
+                        Color::DarkGreen
+                    } else {
+                        Color::Red
+                    }),
+                    Print("     Running ".bold()),
+                    ResetColor,
+                    Print("`"),
+                    Print(output_file.to_string_lossy()),
+                    Print(
+                        match args
+                            .iter()
+                            .cloned()
+                            .reduce(|accumulator, arg| accumulator + " " + &arg)
+                        {
+                            Some(value) => " ".to_string() + &value,
+                            None => "".to_string(),
+                        }
+                    ),
+                    Print("`\n")
+                )?;
+
+                if output_file_exist {
                     Command::new(output_file)
+                        .current_dir(project_path)
                         .args(args)
                         .stdout(Stdio::inherit())
                         .stderr(Stdio::inherit())
@@ -657,7 +665,7 @@ fn scan_dir(
 
                 if extension == "c" || extension == "h" {
                     let code = &read_to_string(&path)?;
-                    let includes = get_includes(&path, project_config.includes.clone(), &code);
+                    let includes = get_includes(&path, &project_config.includes, &code);
 
                     if extension == "c" {
                         c_h_link.insert(path.to_path_buf(), includes.clone());
@@ -700,7 +708,7 @@ fn scan_dir(
     return Ok(());
 }
 
-fn get_includes(path: &Path, include_path_vec: Vec<PathBuf>, code: &String) -> AHashSet<PathBuf> {
+fn get_includes(path: &Path, include_path_vec: &Vec<PathBuf>, code: &String) -> AHashSet<PathBuf> {
     let mut include_hashset = AHashSet::new();
     let parent_path = path.parent().unwrap_or(Path::new("./")).to_path_buf();
 
@@ -724,7 +732,7 @@ fn get_includes(path: &Path, include_path_vec: Vec<PathBuf>, code: &String) -> A
                         continue;
                     }
 
-                    for include_path in include_path_vec.clone() {
+                    for include_path in include_path_vec {
                         let path = include_path.join(path);
 
                         if path.is_file() {

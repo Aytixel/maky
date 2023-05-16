@@ -26,10 +26,10 @@ pub fn link(
         let mut already_explored_h = AHashSet::new();
         let mut need_to_be_link = false;
 
-        for h_file in c_h_link[main_file].clone() {
-            find_h(project_config, &h_file, &mut already_explored_h)?;
+        for h_file in &c_h_link[main_file] {
+            find_h(project_config, h_file, &mut already_explored_h)?;
 
-            already_explored_h.insert(h_file);
+            already_explored_h.insert(h_file.clone());
         }
 
         for h_file in already_explored_h.iter() {
@@ -67,7 +67,7 @@ fn find_h(
         already_explored_h.insert(h_file.to_path_buf());
 
         let code = &read_to_string(&h_file)?;
-        let includes = get_includes(&h_file, project_config.includes.clone(), &code);
+        let includes = get_includes(&h_file, &project_config.includes, &code);
 
         for include in includes {
             find_h(project_config, &include, already_explored_h)?;
