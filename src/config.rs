@@ -705,13 +705,13 @@ fn get_features<'a>() -> AHashSet<&'a str> {
     if is_x86_feature_detected!("avx512vbmi2") {
         features.insert("avx512vbmi2");
     }
-    if is_x86_feature_detected!("avx512gfni") {
+    if is_x86_feature_detected!("gfni") {
         features.insert("avx512gfni");
     }
-    if is_x86_feature_detected!("avx512vaes") {
+    if is_x86_feature_detected!("vaes") {
         features.insert("avx512vaes");
     }
-    if is_x86_feature_detected!("avx512vpclmulqdq") {
+    if is_x86_feature_detected!("vpclmulqdq") {
         features.insert("avx512vpclmulqdq");
     }
     if is_x86_feature_detected!("avx512vnni") {
