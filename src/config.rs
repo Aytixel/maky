@@ -2,12 +2,16 @@ use std::{
     collections::HashMap,
     env,
     fs::{read_to_string, write},
-    io,
+    io::{self, stderr},
     path::{Path, PathBuf},
 };
 
 use ahash::{AHashMap, AHashSet};
 use blake3::Hash;
+use crossterm::{
+    execute,
+    style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
+};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -90,6 +94,27 @@ pub struct ProjectConfig {
 }
 
 impl ProjectConfig {
+    pub fn handle_error(error: io::Error, project_config_path: &Path) -> io::Result<()> {
+        if let io::ErrorKind::Other = error.kind() {
+            execute!(
+                stderr(),
+                SetForegroundColor(Color::DarkRed),
+                Print("Error ".bold()),
+                ResetColor,
+                Print(project_config_path.to_string_lossy().bold()),
+                Print(" :\n\n".bold()),
+                Print(error.to_string()),
+            )
+        } else {
+            execute!(
+                stderr(),
+                SetForegroundColor(Color::DarkRed),
+                Print("Project config file found !\n".bold()),
+                ResetColor,
+            )
+        }
+    }
+
     fn default_compiler() -> String {
         "gcc".to_string()
     }
