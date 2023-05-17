@@ -204,6 +204,10 @@ fn build_run(command: &Commands) -> io::Result<()> {
                 create_dir(&binaries_dir_path)?;
             }
 
+            for include in project_config.includes.drain(..).collect::<Vec<PathBuf>>() {
+                project_config.includes.push(project_path.join(include));
+            }
+
             for source in project_config.sources.iter() {
                 let sources_dir_path = project_path.join(source);
 
@@ -214,15 +218,21 @@ fn build_run(command: &Commands) -> io::Result<()> {
                 project_config.includes.push(project_path.join(source));
             }
 
+            if cfg!(target_os = "linux") {
+                project_config
+                    .includes
+                    .push(project_path.join("/usr/include"));
+            }
+
             let objects_dir_path = project_path.join(&project_config.objects);
             if !objects_dir_path.is_dir() {
                 create_dir(&objects_dir_path)?;
             }
 
-            if cfg!(target_os = "linux") {
-                project_config
-                    .includes
-                    .push(project_path.join("/usr/include"));
+            for (_, library) in &mut project_config.libraries {
+                for directory in &mut library.directories {
+                    *directory = project_path.join(&directory);
+                }
             }
 
             let mut config = Config::load(project_path).unwrap_or_default();
@@ -447,7 +457,14 @@ fn build_run(command: &Commands) -> io::Result<()> {
                 }
 
                 for c_file in file_to_link {
-                    command.arg(objects_dir_path.join(new_hash_hashmap[c_file].to_hex().as_str()));
+                    if let Some(hash) = new_hash_hashmap.get(c_file) {
+                        command.arg(objects_dir_path.join(hash.to_hex().as_str()));
+                    } else {
+                        return Err(io::Error::new(
+                            io::ErrorKind::NotFound,
+                            format!("Object file for `{}` not found.", &c_file.to_string_lossy()),
+                        ));
+                    }
                 }
 
                 if cfg!(target_os = "linux") {
