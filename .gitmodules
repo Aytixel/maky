@@ -1,0 +1,3 @@
+[submodule "test/slap-of-ages"]
+	path = test/slap-of-ages
+	url = https://github.com/Aytixel/slap-of-ages.git
