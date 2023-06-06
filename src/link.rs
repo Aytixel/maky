@@ -1,4 +1,5 @@
 use std::{
+    fmt::Write,
     fs::read_to_string,
     io,
     path::{Path, PathBuf},
@@ -6,12 +7,13 @@ use std::{
 
 use ahash::{AHashMap, AHashSet};
 use blake3::Hash;
+use hyperscan::Scratch;
 use pretok::Pretokenizer;
-use regex::Regex;
 
 use crate::{config::ProjectConfig, get_includes};
 
 pub fn link(
+    scratch: &mut Scratch,
     project_config: &ProjectConfig,
     main_hashset: &AHashSet<PathBuf>,
     files_to_compile: &AHashMap<PathBuf, Hash>,
@@ -27,7 +29,7 @@ pub fn link(
         let mut need_to_be_link = false;
 
         for h_file in &c_h_link[main_file] {
-            find_h(project_config, h_file, &mut already_explored_h)?;
+            find_h(scratch, project_config, h_file, &mut already_explored_h)?;
 
             already_explored_h.insert(h_file.clone());
         }
@@ -59,6 +61,7 @@ pub fn link(
 }
 
 fn find_h(
+    scratch: &mut Scratch,
     project_config: &ProjectConfig,
     h_file: &Path,
     already_explored_h: &mut AHashSet<PathBuf>,
@@ -67,10 +70,10 @@ fn find_h(
         already_explored_h.insert(h_file.to_path_buf());
 
         let code = &read_to_string(&h_file)?;
-        let includes = get_includes(&h_file, &project_config.includes, &code);
+        let includes = get_includes(scratch, &h_file, &project_config.includes, &code);
 
         for include in includes {
-            find_h(project_config, &include, already_explored_h)?;
+            find_h(scratch, project_config, &include, already_explored_h)?;
         }
     }
 
@@ -129,19 +132,39 @@ fn get_prototypes(code: &String) -> AHashSet<String> {
                     }
 
                     if pretoken.s.ends_with(';') || pretoken.s.starts_with('{') {
-                        function_prototype = Regex::new(r"[ \t\n\r]*\*")
-                            .unwrap()
-                            .replace_all(&function_prototype[1..], " *")
-                            .to_string();
-                        function_prototype = Regex::new(r"\*[ \t\n\r]*")
-                            .unwrap()
-                            .replace_all(&function_prototype, "* ")
-                            .to_string();
-                        function_prototype = Regex::new(r"[ \t\n\r]+")
-                            .unwrap()
-                            .replace_all(&function_prototype, " ")
-                            .to_string();
-                        function_prototype_hashset.insert(function_prototype);
+                        let mut formatted_function_prototype = String::new();
+                        let mut last_char = ' ';
+
+                        for char in function_prototype.chars() {
+                            match char {
+                                ' ' | '\t' | '\n' | '\r' => {
+                                    if last_char != ' ' {
+                                        formatted_function_prototype += " ";
+                                        last_char = ' ';
+                                    }
+                                }
+                                '*' => {
+                                    if last_char != ' ' {
+                                        formatted_function_prototype += " *";
+                                    } else {
+                                        formatted_function_prototype += "*";
+                                    }
+
+                                    last_char = '*';
+                                }
+                                _ => {
+                                    if last_char == '*' {
+                                        formatted_function_prototype += " ";
+                                        formatted_function_prototype.write_char(char).unwrap();
+                                        last_char = char;
+                                    } else {
+                                        formatted_function_prototype.write_char(char).unwrap();
+                                        last_char = char;
+                                    }
+                                }
+                            }
+                        }
+                        function_prototype_hashset.insert(formatted_function_prototype);
                         function_prototype = String::new();
                         in_function = false;
                     }
