@@ -7,13 +7,11 @@ use std::{
 
 use ahash::{AHashMap, AHashSet};
 use blake3::Hash;
-use hyperscan::Scratch;
 use pretok::Pretokenizer;
 
 use crate::{config::ProjectConfig, get_includes};
 
 pub fn link(
-    scratch: &mut Scratch,
     project_config: &ProjectConfig,
     main_hashset: &AHashSet<PathBuf>,
     files_to_compile: &AHashMap<PathBuf, Hash>,
@@ -28,16 +26,14 @@ pub fn link(
         let mut already_explored_h = AHashSet::new();
         let mut need_to_be_link = false;
 
-        for h_file in &c_h_link[main_file] {
-            find_h(scratch, project_config, h_file, &mut already_explored_h)?;
-
-            already_explored_h.insert(h_file.clone());
+        for h_file in c_h_link[main_file].iter() {
+            find_h(project_config, h_file, &mut already_explored_h)?;
         }
 
         for h_file in already_explored_h.iter() {
             if let Some(c_files) = h_c_link_filtered.get(h_file) {
                 for c_file in c_files {
-                    if files_to_compile.keys().any(|path| path == c_file) {
+                    if files_to_compile.contains_key(c_file) {
                         need_to_be_link = true;
                     }
 
@@ -46,7 +42,7 @@ pub fn link(
             }
         }
 
-        if files_to_compile.keys().any(|path| path == main_file) {
+        if files_to_compile.contains_key(main_file) {
             need_to_be_link = true;
         }
 
@@ -61,7 +57,6 @@ pub fn link(
 }
 
 fn find_h(
-    scratch: &mut Scratch,
     project_config: &ProjectConfig,
     h_file: &Path,
     already_explored_h: &mut AHashSet<PathBuf>,
@@ -69,11 +64,11 @@ fn find_h(
     if !already_explored_h.contains(h_file) {
         already_explored_h.insert(h_file.to_path_buf());
 
-        let code = &read_to_string(&h_file)?;
-        let includes = get_includes(scratch, &h_file, &project_config.includes, &code);
+        let code = read_to_string(h_file)?;
+        let includes = get_includes(h_file, &project_config.includes, &code);
 
         for include in includes {
-            find_h(scratch, project_config, &include, already_explored_h)?;
+            find_h(project_config, &include, already_explored_h)?;
         }
     }
 
@@ -86,18 +81,14 @@ fn filter_h_c_link(
     let mut link_filtered: AHashMap<PathBuf, AHashSet<PathBuf>> = AHashMap::new();
 
     for (h_file, c_files) in h_c_link.iter() {
-        let h_code = &read_to_string(&h_file)?;
+        let h_code = read_to_string(h_file)?;
         let h_prototypes = get_prototypes(&h_code);
 
         for c_file in c_files {
-            let c_code = &read_to_string(&c_file)?;
+            let c_code = read_to_string(c_file)?;
             let c_prototypes = get_prototypes(&c_code);
 
-            if c_prototypes.iter().any(|c_prototype| {
-                h_prototypes
-                    .iter()
-                    .any(|h_prototype| c_prototype == h_prototype)
-            }) {
+            if !c_prototypes.is_disjoint(&h_prototypes) {
                 link_filtered
                     .entry(h_file.to_path_buf())
                     .or_insert(AHashSet::new())
@@ -109,7 +100,7 @@ fn filter_h_c_link(
     Ok(link_filtered)
 }
 
-fn get_prototypes(code: &String) -> AHashSet<String> {
+fn get_prototypes(code: &str) -> AHashSet<String> {
     let mut function_prototype_hashset = AHashSet::new();
     let mut function_prototype = String::new();
     let mut in_function = false;

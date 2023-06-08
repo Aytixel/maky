@@ -21,7 +21,7 @@ use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
-use hyperscan::{pattern, BlockDatabase, Builder, Matching, Patterns, Scratch};
+use hyperscan::{pattern, BlockDatabase, Builder, Matching, Patterns};
 use kdam::{tqdm, BarExt, Column, RichProgress};
 use once_cell::sync::Lazy;
 
@@ -263,11 +263,8 @@ fn build_run(command: &Commands) -> io::Result<()> {
             config.release = release;
             config.save(project_path)?;
 
-            let mut scratch = HAS_MAIN_REGEX.alloc_scratch().unwrap();
-
             for source in project_config.sources.iter() {
                 scan_dir(
-                    &mut scratch,
                     &project_config,
                     &project_path.join(source),
                     &mut main_hashset,
@@ -350,7 +347,6 @@ fn build_run(command: &Commands) -> io::Result<()> {
             }
 
             let files_to_link = link(
-                &mut scratch,
                 &project_config,
                 &main_hashset,
                 &files_to_compile,
@@ -670,7 +666,6 @@ fn build_run(command: &Commands) -> io::Result<()> {
 }
 
 fn scan_dir(
-    scratch: &mut Scratch,
     project_config: &ProjectConfig,
     dir_path: &Path,
     main_hashset: &mut AHashSet<PathBuf>,
@@ -688,17 +683,17 @@ fn scan_dir(
 
                 if extension == "c" || extension == "h" {
                     let code = &read_to_string(&path)?;
-                    let includes = get_includes(scratch, &path, &project_config.includes, code);
+                    let includes = get_includes(&path, &project_config.includes, code);
 
                     if extension == "c" {
-                        c_h_link.insert(path.to_path_buf(), includes.clone());
+                        c_h_link.insert(path.clone(), includes.clone());
 
-                        if has_main(scratch, code) {
-                            main_hashset.insert(path.to_path_buf());
+                        if has_main(code) {
+                            main_hashset.insert(path.clone());
                         }
                     }
 
-                    hash_hashmap.insert(path.to_path_buf(), hash(code.as_bytes()));
+                    hash_hashmap.insert(path.clone(), hash(code.as_bytes()));
 
                     for include in includes {
                         if extension == "c" {
@@ -716,7 +711,6 @@ fn scan_dir(
                 }
             } else if path.is_dir() {
                 scan_dir(
-                    scratch,
                     project_config,
                     &path,
                     main_hashset,
@@ -746,12 +740,7 @@ static GET_INCLUDES_REGEX: Lazy<BlockDatabase> = Lazy::new(|| {
     .unwrap()
 });
 
-fn get_includes(
-    scratch: &mut Scratch,
-    path: &Path,
-    include_path_vec: &Vec<PathBuf>,
-    code: &str,
-) -> AHashSet<PathBuf> {
+fn get_includes(path: &Path, include_path_vec: &Vec<PathBuf>, code: &str) -> AHashSet<PathBuf> {
     let mut include_hashset = AHashSet::new();
     let parent_path = path.parent().unwrap_or(Path::new("./")).to_path_buf();
 
@@ -760,32 +749,36 @@ fn get_includes(
 
         if line.starts_with("#include") {
             GET_INCLUDES_REGEX
-                .scan(line, scratch, |_, from, to, _| {
-                    let path = Path::new(&line[from as usize + 1..to as usize - 1]);
-
-                    if path.is_file() {
-                        include_hashset.insert(path.to_path_buf());
-                        return Matching::Continue;
-                    }
-
-                    let path_with_parent = parent_path.join(path);
-
-                    if path_with_parent.is_file() {
-                        include_hashset.insert(path_with_parent.to_path_buf());
-                        return Matching::Continue;
-                    }
-
-                    for include_path in include_path_vec {
-                        let path = include_path.join(path);
+                .scan(
+                    line,
+                    &mut GET_INCLUDES_REGEX.alloc_scratch().unwrap(),
+                    |_, from, to, _| {
+                        let path = Path::new(&line[from as usize + 1..to as usize - 1]);
 
                         if path.is_file() {
                             include_hashset.insert(path.to_path_buf());
                             return Matching::Continue;
                         }
-                    }
 
-                    Matching::Continue
-                })
+                        let path_with_parent = parent_path.join(path);
+
+                        if path_with_parent.is_file() {
+                            include_hashset.insert(path_with_parent.to_path_buf());
+                            return Matching::Continue;
+                        }
+
+                        for include_path in include_path_vec {
+                            let path = include_path.join(path);
+
+                            if path.is_file() {
+                                include_hashset.insert(path.to_path_buf());
+                                return Matching::Continue;
+                            }
+                        }
+
+                        Matching::Continue
+                    },
+                )
                 .unwrap();
         }
     }
@@ -799,14 +792,18 @@ static HAS_MAIN_REGEX: Lazy<BlockDatabase> = Lazy::new(|| {
         .unwrap()
 });
 
-fn has_main(scratch: &mut Scratch, code: &str) -> bool {
+fn has_main(code: &str) -> bool {
     let mut has_found_main = false;
 
     HAS_MAIN_REGEX
-        .scan(code, scratch, |_, _, _, _| {
-            has_found_main = true;
-            Matching::Continue
-        })
+        .scan(
+            code,
+            &mut HAS_MAIN_REGEX.alloc_scratch().unwrap(),
+            |_, _, _, _| {
+                has_found_main = true;
+                Matching::Continue
+            },
+        )
         .unwrap();
     has_found_main
 }

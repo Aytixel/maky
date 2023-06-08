@@ -16,25 +16,25 @@ pub fn compile(
     let mut files_to_compile = AHashMap::new();
     let mut new_hash_hashmap_clone = new_hash_hashmap.clone();
 
-    for new_hash in new_hash_hashmap.clone() {
+    for new_hash in new_hash_hashmap.iter() {
         if let Some(extension) = new_hash.0.extension() {
-            if let Some(hash) = hash_hashmap.get(&new_hash.0) {
-                if &new_hash.1 == hash
+            if let Some(hash) = hash_hashmap.get(new_hash.0) {
+                if new_hash.1 == hash
                     && ((extension == "c"
                         && objects_dir_path
                             .join(new_hash.1.to_hex().as_str())
                             .is_file())
                         || extension == "h")
                 {
-                    new_hash_hashmap_clone.remove(&new_hash.0);
-                    hash_hashmap.remove(&new_hash.0);
+                    new_hash_hashmap_clone.remove(new_hash.0);
+                    hash_hashmap.remove(new_hash.0);
                     continue;
                 }
             }
 
             if extension == "c" {
-                new_hash_hashmap_clone.remove(&new_hash.0);
-                files_to_compile.insert(new_hash.0, new_hash.1);
+                new_hash_hashmap_clone.remove(new_hash.0);
+                files_to_compile.insert(new_hash.0.clone(), new_hash.1.clone());
             }
         }
     }
@@ -67,7 +67,7 @@ fn find_c_from_h(
     file: &Path,
     h_h_link: &AHashMap<PathBuf, AHashSet<PathBuf>>,
     h_c_link: &AHashMap<PathBuf, AHashSet<PathBuf>>,
-    new_hash_hashmap_clone: &AHashMap<PathBuf, Hash>,
+    new_hash_hashmap: &AHashMap<PathBuf, Hash>,
     files_to_compile: &mut AHashMap<PathBuf, Hash>,
     already_explored: &mut AHashSet<PathBuf>,
 ) {
@@ -76,16 +76,16 @@ fn find_c_from_h(
 
         if let Some(files) = h_c_link.get(file) {
             for file in files.iter() {
-                files_to_compile.insert(file.to_path_buf(), new_hash_hashmap_clone[file]);
+                files_to_compile.insert(file.to_path_buf(), new_hash_hashmap[file]);
             }
         }
         if let Some(files) = h_h_link.get(file) {
-            for file in files.clone() {
+            for file in files.iter() {
                 find_c_from_h(
-                    &file,
+                    file,
                     h_h_link,
                     h_c_link,
-                    new_hash_hashmap_clone,
+                    new_hash_hashmap,
                     files_to_compile,
                     already_explored,
                 );
