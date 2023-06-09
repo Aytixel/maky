@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     env,
     fs::{read_to_string, write},
     io::{self, stderr},
@@ -84,19 +83,19 @@ pub struct ProjectConfig {
 
     #[serde(default = "ProjectConfig::default_hashmap")]
     #[serde(alias = "libs")]
-    pub libraries: HashMap<String, LibConfig>,
+    pub libraries: AHashMap<String, LibConfig>,
 
     #[serde(default = "ProjectConfig::default_hashmap")]
     #[serde(alias = "arch")]
-    pub arch_specific: HashMap<String, SpecificConfig>,
+    pub arch_specific: AHashMap<String, SpecificConfig>,
 
     #[serde(default = "ProjectConfig::default_hashmap")]
     #[serde(alias = "feat")]
-    pub feature_specific: HashMap<String, SpecificConfig>,
+    pub feature_specific: AHashMap<String, SpecificConfig>,
 
     #[serde(default = "ProjectConfig::default_hashmap")]
     #[serde(alias = "os")]
-    pub os_specific: HashMap<String, SpecificConfig>,
+    pub os_specific: AHashMap<String, SpecificConfig>,
 }
 
 impl ProjectConfig {
@@ -141,8 +140,8 @@ impl ProjectConfig {
         vec![]
     }
 
-    fn default_hashmap<T>() -> HashMap<String, T> {
-        HashMap::new()
+    fn default_hashmap<T>() -> AHashMap<String, T> {
+        AHashMap::new()
     }
 
     fn merge_specific_config(
@@ -405,7 +404,7 @@ pub struct SpecificConfig {
     pub includes: Option<Vec<PathBuf>>,
 
     #[serde(alias = "libs")]
-    pub libraries: Option<HashMap<String, LibConfig>>,
+    pub libraries: Option<AHashMap<String, LibConfig>>,
 }
 
 #[serde_as]
@@ -428,7 +427,7 @@ pub struct LibConfig {
 
     #[serde(default = "LibConfig::default_hashmap")]
     #[serde(alias = "pkg")]
-    pub pkg_config: HashMap<String, String>,
+    pub pkg_config: AHashMap<String, String>,
 }
 
 impl LibConfig {
@@ -436,8 +435,8 @@ impl LibConfig {
         vec![]
     }
 
-    fn default_hashmap<T>() -> HashMap<String, T> {
-        HashMap::new()
+    fn default_hashmap<T>() -> AHashMap<String, T> {
+        AHashMap::new()
     }
 }
 
