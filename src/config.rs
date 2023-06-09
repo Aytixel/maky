@@ -14,6 +14,9 @@ use crossterm::{
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use serde_with::{formats::PreferOne, serde_as, OneOrMany};
+
+use crate::pkg_config::ParsePkgVersion;
 
 pub trait LoadConfig {
     fn load(path: &Path) -> io::Result<Self>
@@ -54,6 +57,7 @@ impl SaveConfig for Config {
     }
 }
 
+#[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ProjectConfig {
     #[serde(default = "ProjectConfig::default_compiler")]
@@ -70,10 +74,12 @@ pub struct ProjectConfig {
 
     #[serde(default = "ProjectConfig::default_sources")]
     #[serde(alias = "src")]
+    #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
     pub sources: Vec<PathBuf>,
 
     #[serde(default = "ProjectConfig::default_includes")]
     #[serde(alias = "inc")]
+    #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
     pub includes: Vec<PathBuf>,
 
     #[serde(default = "ProjectConfig::default_hashmap")]
@@ -331,7 +337,31 @@ impl ProjectConfig {
         }
 
         if let Some(specific_libraries) = specific_config.libraries {
-            self.libraries.extend(specific_libraries);
+            for (specific_library_name, specific_library_config) in specific_libraries.into_iter() {
+                self.libraries
+                    .entry(specific_library_name)
+                    .and_modify(|library_config| {
+                        if library_config.pkg_config.is_empty() {
+                            *library_config = specific_library_config.clone();
+                        } else {
+                            if library_config
+                                .pkg_config
+                                .iter()
+                                .any(|(pkg_name, pkg_version)| {
+                                    !pkg_config::Config::new()
+                                        .cargo_metadata(false)
+                                        .env_metadata(false)
+                                        .parse_version(pkg_version)
+                                        .probe(pkg_name)
+                                        .is_ok()
+                                })
+                            {
+                                *library_config = specific_library_config.clone();
+                            }
+                        }
+                    })
+                    .or_insert(specific_library_config);
+            }
         }
     }
 }
@@ -354,6 +384,7 @@ impl LoadConfig for ProjectConfig {
     }
 }
 
+#[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SpecificConfig {
     #[serde(alias = "cc")]
@@ -366,34 +397,47 @@ pub struct SpecificConfig {
     pub objects: Option<PathBuf>,
 
     #[serde(alias = "src")]
+    #[serde_as(deserialize_as = "Option<OneOrMany<_, PreferOne>>")]
     pub sources: Option<Vec<PathBuf>>,
 
     #[serde(alias = "inc")]
+    #[serde_as(deserialize_as = "Option<OneOrMany<_, PreferOne>>")]
     pub includes: Option<Vec<PathBuf>>,
 
     #[serde(alias = "libs")]
     pub libraries: Option<HashMap<String, LibConfig>>,
 }
 
+#[serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LibConfig {
     #[serde(default = "LibConfig::default_vec")]
     #[serde(alias = "reg")]
-    #[serde(with = "serde_regex")]
-    pub regex: Vec<Regex>,
+    #[serde_as(as = "OneOrMany<_, PreferOne>")]
+    pub regex: Vec<serde_regex::Serde<Regex>>,
 
     #[serde(default = "LibConfig::default_vec")]
     #[serde(alias = "lib")]
+    #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
     pub library: Vec<String>,
 
     #[serde(default = "LibConfig::default_vec")]
     #[serde(alias = "dir")]
+    #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
     pub directories: Vec<PathBuf>,
+
+    #[serde(default = "LibConfig::default_hashmap")]
+    #[serde(alias = "pkg")]
+    pub pkg_config: HashMap<String, String>,
 }
 
 impl LibConfig {
     fn default_vec<T>() -> Vec<T> {
         vec![]
+    }
+
+    fn default_hashmap<T>() -> HashMap<String, T> {
+        HashMap::new()
     }
 }
 
@@ -649,155 +693,158 @@ fn get_features<'a>() -> AHashSet<&'a str> {
         features.insert("simd128");
     }
 
-    if is_x86_feature_detected!("aes") {
-        features.insert("aes");
-    }
-    if is_x86_feature_detected!("pclmulqdq") {
-        features.insert("pclmulqdq");
-    }
-    if is_x86_feature_detected!("rdrand") {
-        features.insert("rdrand");
-    }
-    if is_x86_feature_detected!("rdseed") {
-        features.insert("rdseed");
-    }
-    if is_x86_feature_detected!("tsc") {
-        features.insert("tsc");
-    }
-    if is_x86_feature_detected!("mmx") {
-        features.insert("mmx");
-    }
-    if is_x86_feature_detected!("sse") {
-        features.insert("sse");
-    }
-    if is_x86_feature_detected!("sse2") {
-        features.insert("sse2");
-    }
-    if is_x86_feature_detected!("sse3") {
-        features.insert("sse3");
-    }
-    if is_x86_feature_detected!("ssse3") {
-        features.insert("ssse3");
-    }
-    if is_x86_feature_detected!("sse4.1") {
-        features.insert("sse4.1");
-    }
-    if is_x86_feature_detected!("sse4.2") {
-        features.insert("sse4.2");
-    }
-    if is_x86_feature_detected!("sse4a") {
-        features.insert("sse4a");
-    }
-    if is_x86_feature_detected!("sha") {
-        features.insert("sha");
-    }
-    if is_x86_feature_detected!("avx") {
-        features.insert("avx");
-    }
-    if is_x86_feature_detected!("avx2") {
-        features.insert("avx2");
-    }
-    if is_x86_feature_detected!("avx512f") {
-        features.insert("avx512f");
-    }
-    if is_x86_feature_detected!("avx512cd") {
-        features.insert("avx512cd");
-    }
-    if is_x86_feature_detected!("avx512er") {
-        features.insert("avx512er");
-    }
-    if is_x86_feature_detected!("avx512pf") {
-        features.insert("avx512pf");
-    }
-    if is_x86_feature_detected!("avx512bw") {
-        features.insert("avx512bw");
-    }
-    if is_x86_feature_detected!("avx512dq") {
-        features.insert("avx512dq");
-    }
-    if is_x86_feature_detected!("avx512vl") {
-        features.insert("avx512vl");
-    }
-    if is_x86_feature_detected!("avx512ifma") {
-        features.insert("avx512ifma");
-    }
-    if is_x86_feature_detected!("avx512vbmi") {
-        features.insert("avx512vbmi");
-    }
-    if is_x86_feature_detected!("avx512vpopcntdq") {
-        features.insert("avx512vpopcntdq");
-    }
-    if is_x86_feature_detected!("avx512vbmi2") {
-        features.insert("avx512vbmi2");
-    }
-    if is_x86_feature_detected!("gfni") {
-        features.insert("avx512gfni");
-    }
-    if is_x86_feature_detected!("vaes") {
-        features.insert("avx512vaes");
-    }
-    if is_x86_feature_detected!("vpclmulqdq") {
-        features.insert("avx512vpclmulqdq");
-    }
-    if is_x86_feature_detected!("avx512vnni") {
-        features.insert("avx512vnni");
-    }
-    if is_x86_feature_detected!("avx512bitalg") {
-        features.insert("avx512bitalg");
-    }
-    if is_x86_feature_detected!("avx512bf16") {
-        features.insert("avx512bf16");
-    }
-    if is_x86_feature_detected!("avx512vp2intersect") {
-        features.insert("avx512vp2intersect");
-    }
-    if is_x86_feature_detected!("f16c") {
-        features.insert("f16c");
-    }
-    if is_x86_feature_detected!("fma") {
-        features.insert("fma");
-    }
-    if is_x86_feature_detected!("bmi1") {
-        features.insert("bmi1");
-    }
-    if is_x86_feature_detected!("bmi2") {
-        features.insert("bmi2");
-    }
-    if is_x86_feature_detected!("lzcnt") {
-        features.insert("lzcnt");
-    }
-    if is_x86_feature_detected!("tbm") {
-        features.insert("tbm");
-    }
-    if is_x86_feature_detected!("popcnt") {
-        features.insert("popcnt");
-    }
-    if is_x86_feature_detected!("fxsr") {
-        features.insert("fxsr");
-    }
-    if is_x86_feature_detected!("xsave") {
-        features.insert("xsave");
-    }
-    if is_x86_feature_detected!("xsaveopt") {
-        features.insert("xsaveopt");
-    }
-    if is_x86_feature_detected!("xsaves") {
-        features.insert("xsaves");
-    }
-    if is_x86_feature_detected!("xsavec") {
-        features.insert("xsavec");
-    }
-    if is_x86_feature_detected!("cmpxchg16b") {
-        features.insert("cmpxchg16b");
-    }
-    if is_x86_feature_detected!("adx") {
-        features.insert("adx");
-    }
-    if is_x86_feature_detected!("rtm") {
-        features.insert("rtm");
-    }
-    if is_x86_feature_detected!("abm") {
-        features.insert("abm");
+    #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+    {
+        if is_x86_feature_detected!("aes") {
+            features.insert("aes");
+        }
+        if is_x86_feature_detected!("pclmulqdq") {
+            features.insert("pclmulqdq");
+        }
+        if is_x86_feature_detected!("rdrand") {
+            features.insert("rdrand");
+        }
+        if is_x86_feature_detected!("rdseed") {
+            features.insert("rdseed");
+        }
+        if is_x86_feature_detected!("tsc") {
+            features.insert("tsc");
+        }
+        if is_x86_feature_detected!("mmx") {
+            features.insert("mmx");
+        }
+        if is_x86_feature_detected!("sse") {
+            features.insert("sse");
+        }
+        if is_x86_feature_detected!("sse2") {
+            features.insert("sse2");
+        }
+        if is_x86_feature_detected!("sse3") {
+            features.insert("sse3");
+        }
+        if is_x86_feature_detected!("ssse3") {
+            features.insert("ssse3");
+        }
+        if is_x86_feature_detected!("sse4.1") {
+            features.insert("sse4.1");
+        }
+        if is_x86_feature_detected!("sse4.2") {
+            features.insert("sse4.2");
+        }
+        if is_x86_feature_detected!("sse4a") {
+            features.insert("sse4a");
+        }
+        if is_x86_feature_detected!("sha") {
+            features.insert("sha");
+        }
+        if is_x86_feature_detected!("avx") {
+            features.insert("avx");
+        }
+        if is_x86_feature_detected!("avx2") {
+            features.insert("avx2");
+        }
+        if is_x86_feature_detected!("avx512f") {
+            features.insert("avx512f");
+        }
+        if is_x86_feature_detected!("avx512cd") {
+            features.insert("avx512cd");
+        }
+        if is_x86_feature_detected!("avx512er") {
+            features.insert("avx512er");
+        }
+        if is_x86_feature_detected!("avx512pf") {
+            features.insert("avx512pf");
+        }
+        if is_x86_feature_detected!("avx512bw") {
+            features.insert("avx512bw");
+        }
+        if is_x86_feature_detected!("avx512dq") {
+            features.insert("avx512dq");
+        }
+        if is_x86_feature_detected!("avx512vl") {
+            features.insert("avx512vl");
+        }
+        if is_x86_feature_detected!("avx512ifma") {
+            features.insert("avx512ifma");
+        }
+        if is_x86_feature_detected!("avx512vbmi") {
+            features.insert("avx512vbmi");
+        }
+        if is_x86_feature_detected!("avx512vpopcntdq") {
+            features.insert("avx512vpopcntdq");
+        }
+        if is_x86_feature_detected!("avx512vbmi2") {
+            features.insert("avx512vbmi2");
+        }
+        if is_x86_feature_detected!("gfni") {
+            features.insert("avx512gfni");
+        }
+        if is_x86_feature_detected!("vaes") {
+            features.insert("avx512vaes");
+        }
+        if is_x86_feature_detected!("vpclmulqdq") {
+            features.insert("avx512vpclmulqdq");
+        }
+        if is_x86_feature_detected!("avx512vnni") {
+            features.insert("avx512vnni");
+        }
+        if is_x86_feature_detected!("avx512bitalg") {
+            features.insert("avx512bitalg");
+        }
+        if is_x86_feature_detected!("avx512bf16") {
+            features.insert("avx512bf16");
+        }
+        if is_x86_feature_detected!("avx512vp2intersect") {
+            features.insert("avx512vp2intersect");
+        }
+        if is_x86_feature_detected!("f16c") {
+            features.insert("f16c");
+        }
+        if is_x86_feature_detected!("fma") {
+            features.insert("fma");
+        }
+        if is_x86_feature_detected!("bmi1") {
+            features.insert("bmi1");
+        }
+        if is_x86_feature_detected!("bmi2") {
+            features.insert("bmi2");
+        }
+        if is_x86_feature_detected!("lzcnt") {
+            features.insert("lzcnt");
+        }
+        if is_x86_feature_detected!("tbm") {
+            features.insert("tbm");
+        }
+        if is_x86_feature_detected!("popcnt") {
+            features.insert("popcnt");
+        }
+        if is_x86_feature_detected!("fxsr") {
+            features.insert("fxsr");
+        }
+        if is_x86_feature_detected!("xsave") {
+            features.insert("xsave");
+        }
+        if is_x86_feature_detected!("xsaveopt") {
+            features.insert("xsaveopt");
+        }
+        if is_x86_feature_detected!("xsaves") {
+            features.insert("xsaves");
+        }
+        if is_x86_feature_detected!("xsavec") {
+            features.insert("xsavec");
+        }
+        if is_x86_feature_detected!("cmpxchg16b") {
+            features.insert("cmpxchg16b");
+        }
+        if is_x86_feature_detected!("adx") {
+            features.insert("adx");
+        }
+        if is_x86_feature_detected!("rtm") {
+            features.insert("rtm");
+        }
+        if is_x86_feature_detected!("abm") {
+            features.insert("abm");
+        }
     }
 
     #[cfg(target_arch = "aarch64")]

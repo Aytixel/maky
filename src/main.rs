@@ -1,6 +1,7 @@
 mod compile;
 mod config;
 mod link;
+mod pkg_config;
 
 use std::{
     env,
