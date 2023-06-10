@@ -6,6 +6,8 @@ use std::{
 use ahash::{AHashMap, AHashSet};
 use blake3::Hash;
 
+use crate::{is_code_file, is_header_file};
+
 pub fn compile(
     objects_dir_path: &Path,
     h_h_link: &AHashMap<PathBuf, AHashSet<PathBuf>>,
@@ -20,11 +22,11 @@ pub fn compile(
         if let Some(extension) = new_hash.0.extension() {
             if let Some(hash) = hash_hashmap.get(new_hash.0) {
                 if new_hash.1 == hash
-                    && ((extension == "c"
+                    && ((is_code_file(extension)
                         && objects_dir_path
                             .join(new_hash.1.to_hex().as_str())
                             .is_file())
-                        || extension == "h")
+                        || is_header_file(extension))
                 {
                     new_hash_hashmap_clone.remove(new_hash.0);
                     hash_hashmap.remove(new_hash.0);
@@ -32,7 +34,7 @@ pub fn compile(
                 }
             }
 
-            if extension == "c" {
+            if is_code_file(extension) {
                 new_hash_hashmap_clone.remove(new_hash.0);
                 files_to_compile.insert(new_hash.0.clone(), new_hash.1.clone());
             }

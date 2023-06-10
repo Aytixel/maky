@@ -5,6 +5,7 @@ mod pkg_config;
 
 use std::{
     env,
+    ffi::OsStr,
     fs::{
         create_dir, create_dir_all, read_dir, read_to_string, remove_dir, remove_dir_all,
         remove_file, write,
@@ -682,11 +683,11 @@ fn scan_dir(
             if path.is_file() {
                 let extension = path.extension().unwrap_or_default();
 
-                if extension == "c" || extension == "h" {
+                if is_code_file(extension) || is_header_file(extension) {
                     let code = &read_to_string(&path)?;
                     let includes = get_includes(&path, &project_config.includes, code);
 
-                    if extension == "c" {
+                    if is_code_file(extension) {
                         c_h_link.insert(path.clone(), includes.clone());
 
                         if has_main(code) {
@@ -697,7 +698,7 @@ fn scan_dir(
                     hash_hashmap.insert(path.clone(), hash(code.as_bytes()));
 
                     for include in includes {
-                        if extension == "c" {
+                        if is_code_file(extension) {
                             h_c_link
                                 .entry(include)
                                 .or_insert(AHashSet::new())
@@ -807,4 +808,20 @@ fn has_main(code: &str) -> bool {
         )
         .unwrap();
     has_found_main
+}
+
+pub fn is_code_file(extension: &OsStr) -> bool {
+    extension == "c"
+        || extension == "cpp"
+        || extension == "cxx"
+        || extension == "c++"
+        || extension == "cc"
+}
+
+pub fn is_header_file(extension: &OsStr) -> bool {
+    extension == "h"
+        || extension == "hpp"
+        || extension == "hxx"
+        || extension == "h++"
+        || extension == "hh"
 }
