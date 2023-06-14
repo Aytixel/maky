@@ -222,9 +222,7 @@ fn build_run(command: &Commands) -> io::Result<()> {
             }
 
             if cfg!(target_os = "linux") {
-                project_config
-                    .includes
-                    .push(project_path.join("/usr/include"));
+                project_config.includes.push("/usr/include".into());
             }
 
             let objects_dir_path = project_path.join(&project_config.objects);
@@ -233,10 +231,17 @@ fn build_run(command: &Commands) -> io::Result<()> {
             }
 
             for (_, library) in &mut project_config.libraries {
+                for include in library.includes.drain(..).collect::<Vec<PathBuf>>() {
+                    project_config.includes.push(project_path.join(include));
+                }
+
                 for directory in &mut library.directories {
                     *directory = project_path.join(&directory);
                 }
             }
+
+            project_config.includes.sort();
+            project_config.includes.dedup();
 
             let mut config = Config::load(project_path).unwrap_or_default();
             let mut hash_hashmap = if config.release != release {
