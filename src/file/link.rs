@@ -9,7 +9,9 @@ use ahash::{AHashMap, AHashSet};
 use blake3::Hash;
 use pretok::Pretokenizer;
 
-use crate::{config::ProjectConfig, get_includes};
+use crate::config::ProjectConfig;
+
+use super::get_includes;
 
 pub fn link(
     project_config: &ProjectConfig,

@@ -6,7 +6,7 @@ use std::{
 use ahash::{AHashMap, AHashSet};
 use blake3::Hash;
 
-use crate::{is_code_file, is_header_file};
+use super::{is_code_file, is_header_file};
 
 pub fn compile(
     objects_dir_path: &Path,
