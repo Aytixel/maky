@@ -24,7 +24,7 @@ use crossterm::{
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
 use hyperscan::{pattern, BlockDatabase, Builder, Matching, Patterns};
-use kdam::{tqdm, BarExt, Column, RichProgress};
+use kdam::{tqdm, BarExt, Column, RichProgress, Spinner};
 use once_cell::sync::Lazy;
 
 use crate::{
@@ -294,25 +294,22 @@ fn build_run(command: &Commands) -> io::Result<()> {
                 let mut compile_progress_bar = RichProgress::new(
                     tqdm!(total = files_to_compile.len()),
                     vec![
-                        Column::text("[bold darkgreen]   Compiling"),
-                        Column::Spinner(
-                            "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-                                .chars()
-                                .map(|x| x.to_string())
-                                .collect::<Vec<String>>(),
+                        Column::Text("[bold darkgreen]   Compiling".to_string()),
+                        Column::Spinner(Spinner::new(
+                            &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
                             80.0,
                             1.0,
-                        ),
-                        Column::text("[bold blue]?"),
-                        Column::Bar,
+                        )),
+                        Column::Text("[bold blue]?".to_string()),
+                        Column::Animation,
                         Column::Percentage(1),
-                        Column::text("•"),
+                        Column::Text("•".to_string()),
                         Column::CountTotal,
-                        Column::text("•"),
+                        Column::Text("•".to_string()),
                         Column::ElapsedTime,
                     ],
                 );
-                compile_progress_bar.refresh();
+                compile_progress_bar.refresh().ok();
 
                 Some(compile_progress_bar)
             } else {
@@ -365,14 +362,14 @@ fn build_run(command: &Commands) -> io::Result<()> {
 
             for (file, mut command) in commands.drain(..) {
                 if let Some(compile_progress_bar) = &mut compile_progress_bar_option {
-                    compile_progress_bar.columns[2] = Column::text(
-                        &("[bold blue]".to_string()
+                    compile_progress_bar.columns[2] = Column::Text(
+                        "[bold blue]".to_string()
                             + &file
                                 .strip_prefix(project_path)
                                 .unwrap_or(file)
-                                .to_string_lossy()),
+                                .to_string_lossy(),
                     );
-                    compile_progress_bar.update(1);
+                    compile_progress_bar.update(1).ok();
                 }
 
                 if let Ok(exit_code) = command.wait() {
@@ -391,8 +388,8 @@ fn build_run(command: &Commands) -> io::Result<()> {
 
             if let Some(compile_progress_bar) = &mut compile_progress_bar_option {
                 compile_progress_bar.columns.drain(1..6);
-                compile_progress_bar.clear();
-                compile_progress_bar.refresh();
+                compile_progress_bar.clear().ok();
+                compile_progress_bar.refresh().ok();
 
                 println!();
             }
@@ -426,25 +423,22 @@ fn build_run(command: &Commands) -> io::Result<()> {
                 let mut link_progress_bar = RichProgress::new(
                     tqdm!(total = files_to_link.len()),
                     vec![
-                        Column::text("[bold darkgreen]     Linking"),
-                        Column::Spinner(
-                            "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-                                .chars()
-                                .map(|x| x.to_string())
-                                .collect::<Vec<String>>(),
+                        Column::Text("[bold darkgreen]     Linking".to_string()),
+                        Column::Spinner(Spinner::new(
+                            &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
                             80.0,
                             1.0,
-                        ),
-                        Column::text("[bold blue]?"),
-                        Column::Bar,
+                        )),
+                        Column::Text("[bold blue]?".to_string()),
+                        Column::Animation,
                         Column::Percentage(1),
-                        Column::text("•"),
+                        Column::Text("•".to_string()),
                         Column::CountTotal,
-                        Column::text("•"),
+                        Column::Text("•".to_string()),
                         Column::ElapsedTime,
                     ],
                 );
-                link_progress_bar.refresh();
+                link_progress_bar.refresh().ok();
 
                 Some(link_progress_bar)
             } else {
@@ -545,14 +539,14 @@ fn build_run(command: &Commands) -> io::Result<()> {
 
             for (file, mut command) in commands.drain(..) {
                 if let Some(link_progress_bar) = &mut link_progress_bar_option {
-                    link_progress_bar.columns[2] = Column::text(
-                        &("[bold blue]".to_string()
+                    link_progress_bar.columns[2] = Column::Text(
+                        "[bold blue]".to_string()
                             + &file
                                 .strip_prefix(project_path)
                                 .unwrap_or(file)
-                                .to_string_lossy()),
+                                .to_string_lossy(),
                     );
-                    link_progress_bar.update(1);
+                    link_progress_bar.update(1).ok();
                 }
 
                 if let Ok(exit_code) = command.wait() {
@@ -573,8 +567,8 @@ fn build_run(command: &Commands) -> io::Result<()> {
 
             if let Some(link_progress_bar) = &mut link_progress_bar_option {
                 link_progress_bar.columns.drain(1..6);
-                link_progress_bar.clear();
-                link_progress_bar.refresh();
+                link_progress_bar.clear().ok();
+                link_progress_bar.refresh().ok();
 
                 println!();
             }
