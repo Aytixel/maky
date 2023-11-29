@@ -32,7 +32,12 @@ pub fn scan_dir(
                 let extension = path.extension().unwrap_or_default();
 
                 if is_code_file(extension) || is_header_file(extension) {
-                    let code = &read_to_string(&path)?;
+                    let code = &read_to_string(&path).map_err(|error| {
+                        io::Error::new(
+                            error.kind(),
+                            format!("{} : {}", path.to_string_lossy(), error),
+                        )
+                    })?;
                     let includes = get_includes(&path, &project_config.includes, code);
 
                     if is_code_file(extension) {
