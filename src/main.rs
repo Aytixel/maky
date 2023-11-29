@@ -64,6 +64,8 @@ enum Commands {
 }
 
 fn main() -> io::Result<()> {
+    kdam::term::init(true);
+
     let args = Args::parse();
 
     if let Some(command) = args.command {
