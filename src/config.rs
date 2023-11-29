@@ -340,42 +340,32 @@ impl ProjectConfig {
                 self.libraries
                     .entry(specific_library_name)
                     .and_modify(|library_config| {
-                        if library_config.pkg_config.is_empty() {
-                            *library_config = specific_library_config.clone();
-                        } else {
-                            if library_config
-                                .pkg_config
-                                .iter()
-                                .any(|(pkg_name, pkg_version)| {
-                                    if let Ok(pkg_config) = pkg_config::Config::new()
-                                        .cargo_metadata(false)
-                                        .env_metadata(false)
-                                        .parse_version(pkg_version)
-                                        .probe(pkg_name)
-                                    {
-                                        library_config.library.extend(pkg_config.libs);
-                                        library_config.directories.extend(pkg_config.link_paths);
-                                        library_config.includes.extend(pkg_config.include_paths);
-
-                                        false
-                                    } else {
-                                        true
-                                    }
-                                })
-                            {
-                                *library_config = specific_library_config.clone();
-                            }
-                        }
-
-                        library_config.library.sort();
-                        library_config.library.dedup();
-                        library_config.directories.sort();
-                        library_config.directories.dedup();
-                        library_config.includes.sort();
-                        library_config.includes.dedup();
+                        *library_config = specific_library_config.clone();
                     })
                     .or_insert(specific_library_config);
             }
+        }
+
+        for library_config in self.libraries.values_mut() {
+            for (pkg_name, pkg_version) in library_config.pkg_config.iter() {
+                if let Ok(pkg_config) = pkg_config::Config::new()
+                    .cargo_metadata(false)
+                    .env_metadata(false)
+                    .parse_version(pkg_version)
+                    .probe(pkg_name)
+                {
+                    library_config.library.extend(pkg_config.libs);
+                    library_config.directories.extend(pkg_config.link_paths);
+                    library_config.includes.extend(pkg_config.include_paths);
+                }
+            }
+
+            library_config.library.sort();
+            library_config.library.dedup();
+            library_config.directories.sort();
+            library_config.directories.dedup();
+            library_config.includes.sort();
+            library_config.includes.dedup();
         }
     }
 }
