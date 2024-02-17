@@ -577,6 +577,7 @@ dependencies = [
  "serde",
  "serde_regex",
  "serde_with",
+ "string_template",
  "toml",
 ]
 
@@ -900,6 +901,15 @@ checksum = "a53cb721e1f6d0dbba1296e2d7770edbec9a4888fdd8f6a22fea97a0a69b465a"
 dependencies = [
  "rustc_version 0.1.7",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "string_template"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc6f2c6b2c3fa950895c9aeb0c3cb9271d7eb580662af9af2b711b593f446320"
+dependencies = [
+ "regex",
 ]
 
 [[package]]

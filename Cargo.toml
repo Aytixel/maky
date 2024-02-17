@@ -8,6 +8,7 @@ authors = ["Aytixel"]
 
 [dependencies]
 regex = "1.10.2"
+string_template = "0.2.1"
 pretok = "0.1.0"
 serde = { version = "1.0.193", features = ["derive"] }
 serde_with = "3.4.0"

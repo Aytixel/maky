@@ -1,8 +1,10 @@
 use std::{
+    collections::HashMap,
     env,
     fs::{read_to_string, write},
     io::{self, stderr},
     path::{Path, PathBuf},
+    slice::IterMut,
 };
 
 use ahash::{AHashMap, AHashSet};
@@ -14,6 +16,7 @@ use crossterm::{
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_with::{formats::PreferOne, serde_as, OneOrMany};
+use string_template::Template;
 
 use crate::pkg_config::ParsePkgVersion;
 
@@ -383,6 +386,26 @@ impl LoadConfig for ProjectConfig {
         oss.insert(env::consts::FAMILY);
 
         project_config.merge_specific_config(archs, get_features(), oss);
+
+        let template_values = HashMap::from([
+            ("os", env::consts::OS),
+            ("family", env::consts::FAMILY),
+            ("arch", env::consts::ARCH),
+        ]);
+        let generate_path_variant = |paths: IterMut<PathBuf>| {
+            for path in paths {
+                *path =
+                    PathBuf::from(Template::new(&path.to_string_lossy()).render(&template_values));
+            }
+        };
+
+        generate_path_variant(project_config.sources.iter_mut());
+        generate_path_variant(project_config.includes.iter_mut());
+
+        for library in project_config.libraries.values_mut() {
+            generate_path_variant(library.directories.iter_mut());
+            generate_path_variant(library.includes.iter_mut());
+        }
 
         Ok(project_config)
     }
