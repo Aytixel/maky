@@ -349,7 +349,11 @@ impl ProjectConfig {
             }
         }
 
-        for library_config in self.libraries.values_mut() {
+        'main: for library_config in self.libraries.values_mut() {
+            let mut library = Vec::new();
+            let mut directories = Vec::new();
+            let mut includes = Vec::new();
+
             for (pkg_name, pkg_version) in library_config.pkg_config.iter() {
                 if let Ok(pkg_config) = pkg_config::Config::new()
                     .cargo_metadata(false)
@@ -357,17 +361,23 @@ impl ProjectConfig {
                     .parse_version(pkg_version)
                     .probe(pkg_name)
                 {
-                    library_config.library.extend(pkg_config.libs);
-                    library_config.directories.extend(pkg_config.link_paths);
-                    library_config.includes.extend(pkg_config.include_paths);
+                    library = pkg_config.libs;
+                    directories = pkg_config.link_paths;
+                    includes = pkg_config.include_paths;
+                } else {
+                    continue 'main;
                 }
             }
 
-            library_config.library.sort();
+            library.append(&mut library_config.library);
+            directories.append(&mut library_config.directories);
+            includes.append(&mut library_config.includes);
+
+            library_config.library = library;
+            library_config.directories = directories;
+            library_config.includes = includes;
             library_config.library.dedup();
-            library_config.directories.sort();
             library_config.directories.dedup();
-            library_config.includes.sort();
             library_config.includes.dedup();
         }
     }
