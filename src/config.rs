@@ -369,9 +369,9 @@ impl ProjectConfig {
                 }
             }
 
-            library.append(&mut library_config.library);
-            directories.append(&mut library_config.directories);
-            includes.append(&mut library_config.includes);
+            library.extend_from_slice(&library_config.library);
+            directories.extend_from_slice(&library_config.directories);
+            includes.extend_from_slice(&library_config.includes);
 
             library_config.library = library;
             library_config.directories = directories;
