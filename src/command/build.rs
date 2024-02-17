@@ -2,7 +2,7 @@ use std::{
     env,
     fs::{create_dir, create_dir_all, read_dir, remove_dir, remove_file},
     io::{self, stderr, stdout, Read},
-    path::{Path, PathBuf},
+    path::Path,
     process::{Command, Stdio},
     time::Instant,
 };
@@ -15,7 +15,7 @@ use crossterm::{
 use kdam::{tqdm, BarExt, Column, RichProgress, Spinner};
 
 use crate::{
-    config::{Config, LibConfig, LoadConfig, ProjectConfig, SaveConfig},
+    config::{Config, LoadConfig, ProjectConfig, SaveConfig},
     file::{compile::compile, link::link, scan_dir},
 };
 
@@ -58,22 +58,13 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                 create_dir(&binaries_dir_path)?;
             }
 
-            for include in project_config.includes.drain(..).collect::<Vec<PathBuf>>() {
-                project_config.includes.push(project_path.join(include));
-            }
-
             for source in project_config.sources.iter() {
                 let sources_dir_path = project_path.join(source);
-
                 if !sources_dir_path.is_dir() {
                     create_dir(sources_dir_path)?;
                 }
 
-                project_config.includes.push(project_path.join(source));
-            }
-
-            if cfg!(target_os = "linux") {
-                project_config.includes.push("/usr/include".into());
+                project_config.includes.push(source.clone());
             }
 
             let objects_dir_path = project_path.join(&project_config.objects);
@@ -81,17 +72,18 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                 create_dir(&objects_dir_path)?;
             }
 
-            for (_, library) in &mut project_config.libraries {
-                for include in library.includes.drain(..).collect::<Vec<PathBuf>>() {
-                    project_config.includes.push(project_path.join(include));
-                }
-
-                for directory in &mut library.directories {
-                    *directory = project_path.join(&directory);
-                }
+            for library in project_config.libraries.values() {
+                project_config.includes.extend_from_slice(&library.includes);
             }
 
-            project_config.includes.sort();
+            for include in project_config.includes.iter_mut() {
+                *include = project_path.join(&include);
+            }
+
+            if cfg!(target_os = "linux") {
+                project_config.includes.push("/usr/include".into());
+            }
+
             project_config.includes.dedup();
 
             let mut config = Config::load(project_path).unwrap_or_default();
@@ -172,13 +164,20 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
 
             for include in project_config.includes.iter() {
                 include_args.push("-I".to_string());
-                include_args.push(include.to_string_lossy().to_string());
+                include_args.push(
+                    include
+                        .strip_prefix(project_path)
+                        .unwrap_or(include)
+                        .to_string_lossy()
+                        .to_string(),
+                );
             }
 
             for file in files_to_compile.iter() {
                 let mut command = Command::new(&project_config.compiler);
 
                 command
+                    .current_dir(project_path)
                     .stderr(Stdio::piped())
                     .arg("-fdiagnostics-color=always");
 
@@ -193,9 +192,9 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                     command
                         .args(&include_args)
                         .arg("-c")
-                        .arg(file.0)
+                        .arg(file.0.strip_prefix(project_path).unwrap())
                         .arg("-o")
-                        .arg(objects_dir_path.join(file.1.to_hex().as_str()))
+                        .arg(project_config.objects.join(file.1.to_hex().as_str()))
                         .spawn()
                         .unwrap(),
                 ));
@@ -217,7 +216,7 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                         "[bold blue]".to_string()
                             + &file
                                 .strip_prefix(project_path)
-                                .unwrap_or(file)
+                                .unwrap_or(&file)
                                 .to_string_lossy(),
                     );
                     compile_progress_bar.update(1).ok();
@@ -300,6 +299,7 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                 let mut command = Command::new(&project_config.compiler);
 
                 command
+                    .current_dir(project_path)
                     .stderr(Stdio::piped())
                     .arg("-fdiagnostics-color=always");
 
@@ -311,7 +311,7 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
 
                 for c_file in file_to_link {
                     if let Some(hash) = new_hash_hashmap.get(c_file) {
-                        command.arg(objects_dir_path.join(hash.to_hex().as_str()));
+                        command.arg(project_config.objects.join(hash.to_hex().as_str()));
                     } else {
                         return Err(io::Error::new(
                             io::ErrorKind::NotFound,
@@ -320,24 +320,9 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                     }
                 }
 
-                if cfg!(target_os = "linux") {
-                    command
-                        .arg("-L")
-                        .arg("/usr/local/lib/")
-                        .arg("-Wl,-rpath")
-                        .arg("/usr/lib/")
-                        .arg("-Wl,-rpath")
-                        .arg("/lib/x86_64-linux-gnu/");
-                }
-
-                for lib in {
-                    let mut libs: Vec<&LibConfig> = project_config.libraries.values().collect();
-
-                    libs.reverse();
-                    libs
-                } {
-                    if !lib.regex.is_empty() {
-                        if !lib
+                for lib_config in project_config.libraries.values_mut() {
+                    if !lib_config.regex.is_empty() {
+                        if !lib_config
                             .regex
                             .iter()
                             .any(|regex| regex.is_match(&main_file.to_string_lossy()))
@@ -346,22 +331,35 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                         }
                     }
 
-                    let mut lib_dir_iter = lib.directories.iter();
+                    command.arg("-L");
 
-                    if let Some(lib_dir) = lib_dir_iter.next() {
-                        command.arg("-L").arg(lib_dir);
-
-                        for lib_dir in lib_dir_iter {
-                            command.arg("-Wl,-rpath").arg(lib_dir);
-                        }
+                    if let Some(directory) = lib_config.directories.get(0) {
+                        command.arg(directory).arg("-Wl,-rpath");
                     }
 
-                    for lib in lib.library.iter() {
-                        command.arg("-l".to_string() + lib);
+                    for directory in lib_config.directories.iter() {
+                        command.arg(directory).arg("-Wl,-rpath");
+                    }
+
+                    if cfg!(target_os = "linux") {
+                        command
+                            .arg("/usr/local/lib/")
+                            .arg("-Wl,-rpath")
+                            .arg("/usr/lib/")
+                            .arg("-Wl,-rpath")
+                            .arg("/lib/x86_64-linux-gnu/")
+                            .arg("-Wl,-rpath");
+                    }
+
+                    command.arg(".");
+
+                    for library in lib_config.library.iter() {
+                        command.arg("-l".to_string() + library);
                     }
                 }
 
-                let output_path = binaries_dir_path
+                let output_path = project_config
+                    .binaries
                     .join(if release {
                         Path::new("release")
                     } else {
@@ -376,7 +374,7 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                     );
                 let mut output_file = output_path.join(main_file.file_stem().unwrap());
 
-                create_dir_all(output_path).unwrap();
+                create_dir_all(project_path.join(output_path)).unwrap();
 
                 output_file.set_extension(env::consts::EXE_EXTENSION);
 
