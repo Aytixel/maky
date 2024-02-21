@@ -41,8 +41,8 @@ pub fn get_imports(code: &str) -> Vec<String> {
         .unwrap();
 
     if let Some(import) = imports.get_mut(0) {
-        if let Some(last) = import.split("//@import ").last() {
-            *import = last.to_string();
+        if let Some(last) = import.split("//@import").last() {
+            *import = last.trim_start().to_string();
         }
     }
 
