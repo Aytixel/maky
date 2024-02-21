@@ -1,6 +1,6 @@
 use std::{
     env,
-    fs::{create_dir, create_dir_all, read_dir, remove_dir, remove_file},
+    fs::{create_dir, create_dir_all, read_dir, remove_dir, remove_file, File},
     io::{self, stderr, stdout, Read},
     path::Path,
     process::{Command, Stdio},
@@ -16,7 +16,11 @@ use kdam::{tqdm, BarExt, Column, RichProgress, Spinner};
 
 use crate::{
     config::{Config, LoadConfig, ProjectConfig, SaveConfig},
-    file::{compile::compile, link::link, scan_dir},
+    file::{
+        compile::compile,
+        link::{get_imports, link},
+        scan_dir,
+    },
 };
 
 pub fn build(config_file: String, release: bool) -> io::Result<()> {
@@ -320,15 +324,17 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                     }
                 }
 
-                for lib_config in project_config.libraries.values_mut() {
-                    if !lib_config.regex.is_empty() {
-                        if !lib_config
-                            .regex
-                            .iter()
-                            .any(|regex| regex.is_match(&main_file.to_string_lossy()))
-                        {
-                            continue;
-                        }
+                let imports = get_imports(&{
+                    let mut code = String::new();
+
+                    File::open(main_file)?.read_to_string(&mut code)?;
+
+                    code
+                });
+
+                for (library_name, lib_config) in project_config.libraries.iter_mut() {
+                    if !imports.contains(library_name) {
+                        continue;
                     }
 
                     command.arg("-L");

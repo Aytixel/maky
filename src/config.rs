@@ -13,7 +13,6 @@ use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_with::{formats::PreferOne, serde_as, OneOrMany};
 use string_template::Template;
@@ -448,11 +447,6 @@ pub struct SpecificConfig {
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LibConfig {
-    #[serde(default = "LibConfig::default_vec")]
-    #[serde(alias = "reg")]
-    #[serde_as(as = "OneOrMany<_, PreferOne>")]
-    pub regex: Vec<serde_regex::Serde<Regex>>,
-
     #[serde(default = "LibConfig::default_vec")]
     #[serde(alias = "lib")]
     #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
