@@ -139,7 +139,7 @@ impl ProjectConfig {
     }
 
     fn default_includes() -> Vec<PathBuf> {
-        vec![]
+        Vec::new()
     }
 
     fn default_hashmap<T>() -> AHashMap<String, T> {
@@ -469,7 +469,7 @@ pub struct LibConfig {
 
 impl LibConfig {
     fn default_vec<T>() -> Vec<T> {
-        vec![]
+        Vec::new()
     }
 
     fn default_hashmap<T>() -> AHashMap<String, T> {
@@ -499,7 +499,7 @@ impl LoadConfig for AHashMap<PathBuf, Hash> {
 
 impl SaveConfig for AHashMap<PathBuf, Hash> {
     fn save(&self, project_path: &Path) -> io::Result<()> {
-        let mut data = vec![];
+        let mut data = Vec::new();
 
         for hash in self {
             data.append(

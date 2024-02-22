@@ -57,7 +57,7 @@ pub fn link(
     c_h_link: &AHashMap<PathBuf, AHashSet<PathBuf>>,
 ) -> io::Result<Vec<(PathBuf, AHashSet<PathBuf>)>> {
     let h_c_link_filtered = filter_h_c_link(h_c_link)?;
-    let mut files_to_link = vec![];
+    let mut files_to_link = Vec::new();
 
     for main_file in main_hashset.iter() {
         let mut file_to_link = AHashSet::new();

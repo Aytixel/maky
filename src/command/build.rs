@@ -163,19 +163,23 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                 None
             };
 
-            let mut commands = vec![];
-            let mut include_args = vec![];
+            let mut commands = Vec::new();
+            let include_args = {
+                let mut include_args = Vec::new();
 
-            for include in project_config.includes.iter() {
-                include_args.push("-I".to_string());
-                include_args.push(
-                    include
-                        .strip_prefix(project_path)
-                        .unwrap_or(include)
-                        .to_string_lossy()
-                        .to_string(),
-                );
-            }
+                for include in project_config.includes.iter() {
+                    include_args.push("-I".to_string());
+                    include_args.push(
+                        include
+                            .strip_prefix(project_path)
+                            .unwrap_or(include)
+                            .to_string_lossy()
+                            .to_string(),
+                    );
+                }
+
+                include_args
+            };
 
             for file in files_to_compile.iter() {
                 let mut command = Command::new(&project_config.compiler);
@@ -211,8 +215,7 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                 &h_c_link,
                 &c_h_link,
             )?;
-
-            let mut errors = vec![];
+            let mut errors = Vec::new();
 
             for (file, mut command) in commands.drain(..) {
                 if let Some(compile_progress_bar) = &mut compile_progress_bar_option {
@@ -299,6 +302,51 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                 None
             };
 
+            let libraries_args = {
+                let mut libraries_args = AHashMap::new();
+
+                for (library_name, lib_config) in project_config.libraries.iter() {
+                    let mut args = Vec::new();
+
+                    args.push("-L".to_string());
+
+                    if let Some(directory) = lib_config.directories.get(0) {
+                        args.extend([
+                            directory.to_string_lossy().to_string(),
+                            "-Wl,-rpath".to_string(),
+                        ]);
+
+                        for directory in lib_config.directories.iter() {
+                            args.extend([
+                                directory.to_string_lossy().to_string(),
+                                "-Wl,-rpath".to_string(),
+                            ]);
+                        }
+                    }
+
+                    if cfg!(target_os = "linux") {
+                        args.extend([
+                            "/usr/local/lib/".to_string(),
+                            "-Wl,-rpath".to_string(),
+                            "/usr/lib/".to_string(),
+                            "-Wl,-rpath".to_string(),
+                            "/lib/x86_64-linux-gnu/".to_string(),
+                            "-Wl,-rpath".to_string(),
+                        ]);
+                    }
+
+                    args.push(".".to_string());
+
+                    for library in lib_config.library.iter() {
+                        args.push("-l".to_string() + library);
+                    }
+
+                    libraries_args.insert(library_name, args);
+                }
+
+                libraries_args
+            };
+
             for (main_file, file_to_link) in &files_to_link {
                 let mut command = Command::new(&project_config.compiler);
 
@@ -332,36 +380,12 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                     code
                 });
 
-                for (library_name, lib_config) in project_config.libraries.iter_mut() {
+                for (library_name, args) in libraries_args.iter() {
                     if !imports.contains(library_name) {
                         continue;
                     }
 
-                    command.arg("-L");
-
-                    if let Some(directory) = lib_config.directories.get(0) {
-                        command.arg(directory).arg("-Wl,-rpath");
-                    }
-
-                    for directory in lib_config.directories.iter() {
-                        command.arg(directory).arg("-Wl,-rpath");
-                    }
-
-                    if cfg!(target_os = "linux") {
-                        command
-                            .arg("/usr/local/lib/")
-                            .arg("-Wl,-rpath")
-                            .arg("/usr/lib/")
-                            .arg("-Wl,-rpath")
-                            .arg("/lib/x86_64-linux-gnu/")
-                            .arg("-Wl,-rpath");
-                    }
-
-                    command.arg(".");
-
-                    for library in lib_config.library.iter() {
-                        command.arg("-l".to_string() + library);
-                    }
+                    command.args(args);
                 }
 
                 let output_path = project_config
@@ -390,7 +414,7 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                 ));
             }
 
-            let mut errors = vec![];
+            let mut errors = Vec::new();
 
             for (file, mut command) in commands.drain(..) {
                 if let Some(link_progress_bar) = &mut link_progress_bar_option {
