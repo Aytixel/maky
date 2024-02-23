@@ -7,47 +7,11 @@ use std::{
 
 use ahash::{AHashMap, AHashSet};
 use blake3::Hash;
-use hyperscan::{pattern, BlockDatabase, Builder, Matching};
-use once_cell::sync::Lazy;
 use pretok::Pretokenizer;
 
 use crate::config::ProjectConfig;
 
 use super::get_includes;
-
-static GET_IMPORTS_REGEX: Lazy<BlockDatabase> = Lazy::new(|| {
-    pattern! {"//@import .*[\r\n]"; SINGLEMATCH}
-        .build()
-        .unwrap()
-});
-
-pub fn get_imports(code: &str) -> Vec<String> {
-    let mut imports = Vec::new();
-
-    GET_IMPORTS_REGEX
-        .scan(
-            code,
-            &mut GET_IMPORTS_REGEX.alloc_scratch().unwrap(),
-            |_, from, to, _| {
-                imports.extend(
-                    code[from as usize..to as usize]
-                        .split(",")
-                        .map(str::trim)
-                        .map(str::to_string),
-                );
-                Matching::Continue
-            },
-        )
-        .unwrap();
-
-    if let Some(import) = imports.get_mut(0) {
-        if let Some(last) = import.split("//@import").last() {
-            *import = last.trim_start().to_string();
-        }
-    }
-
-    return imports;
-}
 
 pub fn link(
     project_config: &ProjectConfig,

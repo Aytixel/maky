@@ -15,6 +15,40 @@ use crate::config::ProjectConfig;
 pub mod compile;
 pub mod link;
 
+static GET_IMPORTS_REGEX: Lazy<BlockDatabase> = Lazy::new(|| {
+    pattern! {"//@import .*[\r\n]"; SINGLEMATCH}
+        .build()
+        .unwrap()
+});
+
+pub fn get_imports(code: &str) -> Vec<String> {
+    let mut imports = Vec::new();
+
+    GET_IMPORTS_REGEX
+        .scan(
+            code,
+            &mut GET_IMPORTS_REGEX.alloc_scratch().unwrap(),
+            |_, from, to, _| {
+                imports.extend(
+                    code[from as usize..to as usize]
+                        .split(",")
+                        .map(str::trim)
+                        .map(str::to_string),
+                );
+                Matching::Continue
+            },
+        )
+        .unwrap();
+
+    if let Some(import) = imports.get_mut(0) {
+        if let Some(last) = import.split("//@import").last() {
+            *import = last.trim_start().to_string();
+        }
+    }
+
+    return imports;
+}
+
 pub fn scan_dir(
     project_config: &ProjectConfig,
     dir_path: &Path,

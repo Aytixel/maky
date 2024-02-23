@@ -16,11 +16,7 @@ use kdam::{tqdm, BarExt, Column, RichProgress, Spinner};
 
 use crate::{
     config::{Config, LoadConfig, ProjectConfig, SaveConfig},
-    file::{
-        compile::compile,
-        link::{get_imports, link},
-        scan_dir,
-    },
+    file::{compile::compile, get_imports, link::link, scan_dir},
 };
 
 pub fn build(config_file: String, release: bool) -> io::Result<()> {
