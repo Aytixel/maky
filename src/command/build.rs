@@ -1,6 +1,6 @@
 use std::{
     env,
-    fs::{create_dir, create_dir_all, read_dir, remove_dir, remove_file, File},
+    fs::{create_dir, create_dir_all, read_dir, read_to_string, remove_dir, remove_file},
     io::{self, stderr, stdout, Read},
     path::Path,
     process::{Command, Stdio},
@@ -369,13 +369,7 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                 }
 
                 let imports = get_imports(
-                    &{
-                        let mut code = String::new();
-
-                        File::open(main_file)?.read_to_string(&mut code)?;
-
-                        code
-                    },
+                    &read_to_string(main_file)?,
                     main_file.extension().unwrap_or_default(),
                 );
 
