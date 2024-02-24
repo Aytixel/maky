@@ -9,6 +9,7 @@ use ahash::{AHashMap, AHashSet};
 use blake3::{hash, Hash};
 use hyperscan::{pattern, BlockDatabase, Builder, Matching, Patterns};
 use once_cell::sync::Lazy;
+use tree_sitter::{Language, Parser};
 
 use crate::config::ProjectConfig;
 
@@ -77,7 +78,7 @@ pub fn scan_dir(
                     if is_code_file(extension) {
                         c_h_link.insert(path.clone(), includes.clone());
 
-                        if has_main(code) {
+                        if has_main(code, extension) {
                             main_hashset.insert(path.clone());
                         }
                     }
@@ -175,40 +176,52 @@ fn get_includes(path: &Path, include_path_vec: &Vec<PathBuf>, code: &str) -> AHa
     include_hashset
 }
 
-static HAS_MAIN_REGEX: Lazy<BlockDatabase> = Lazy::new(|| {
-    pattern! {r"(void|int)[ \t\n\r]*main[ \t\n\r]*\("; SINGLEMATCH}
-        .build()
-        .unwrap()
-});
+fn has_main(code: &str, extension: &OsStr) -> bool {
+    if let Some(tree) = {
+        let mut parser = Parser::new();
 
-fn has_main(code: &str) -> bool {
-    let mut has_found_main = false;
+        parser
+            .set_language(get_language(extension).expect("Unknown file extension"))
+            .expect("Error loading parser grammar");
+        parser.parse(code, None)
+    } {
+        for i in 0..tree.root_node().child_count() {
+            if let Some(node) = tree.root_node().child(i).unwrap().child(1) {
+                if node.kind_id() == 222
+                    && node.child_count() > 0
+                    && &code[node.child(0).unwrap().byte_range()] == "main"
+                {
+                    return true;
+                }
+            }
+        }
+    }
 
-    HAS_MAIN_REGEX
-        .scan(
-            code,
-            &mut HAS_MAIN_REGEX.alloc_scratch().unwrap(),
-            |_, _, _, _| {
-                has_found_main = true;
-                Matching::Continue
-            },
-        )
-        .unwrap();
-    has_found_main
+    false
 }
 
 fn is_code_file(extension: &OsStr) -> bool {
     extension == "c"
+        || extension == "cc"
         || extension == "cpp"
         || extension == "cxx"
         || extension == "c++"
-        || extension == "cc"
 }
 
 fn is_header_file(extension: &OsStr) -> bool {
     extension == "h"
+        || extension == "hh"
         || extension == "hpp"
         || extension == "hxx"
         || extension == "h++"
-        || extension == "hh"
+}
+
+fn get_language(extension: &OsStr) -> Option<Language> {
+    match extension.to_str().unwrap_or_default() {
+        "c" | "h" => Some(tree_sitter_c::language()),
+        "cc" | "cpp" | "cxx" | "c++" | "hh" | "hpp" | "hxx" | "h++" => {
+            Some(tree_sitter_cpp::language())
+        }
+        _ => None,
+    }
 }

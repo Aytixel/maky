@@ -19,4 +19,7 @@ kdam = { version = "0.5.0", features = ["rich", "spinner"] }
 ahash = { version = "0.8.6", features = ["serde"] }
 hyperscan = "0.3.2"
 once_cell = "1.18.0"
+tree-sitter = "0.20.10"
+tree-sitter-c = "0.20.8"
+tree-sitter-cpp = "0.20.5"
 pkg-config = "0.3.27"
