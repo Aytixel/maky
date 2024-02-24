@@ -18,15 +18,10 @@ const IMPORT_LENGTH: usize = 10;
 
 pub fn get_imports(code: &str) -> Vec<String> {
     if let Some(index) = code.find("//@import ") {
-        let code = code[index + IMPORT_LENGTH
-            ..index
-                + IMPORT_LENGTH
-                + code[index + INCLUDE_LENGTH..]
-                    .find("\n")
-                    .expect("No end of line found")]
-            .trim();
+        let index = index + IMPORT_LENGTH;
 
-        return code
+        return code[index..index + code[index..].find("\n").expect("No end of line found")]
+            .trim()
             .split(",")
             .map(str::trim)
             .map(str::to_string)
@@ -109,13 +104,9 @@ fn get_includes(path: &Path, include_path_vec: &Vec<PathBuf>, code: &str) -> AHa
     let parent_path = path.parent().unwrap_or(Path::new("./")).to_path_buf();
 
     'main: for (index, _) in code.match_indices("#include") {
-        let code = code[index + INCLUDE_LENGTH
-            ..index
-                + INCLUDE_LENGTH
-                + code[index + INCLUDE_LENGTH..]
-                    .find("\n")
-                    .expect("No end of line found")]
-            .trim();
+        let index = index + INCLUDE_LENGTH;
+        let code =
+            code[index..index + code[index..].find("\n").expect("No end of line found")].trim();
 
         if code.len() > 2 {
             let path = Path::new(&code[1..code.len() - 1]);
