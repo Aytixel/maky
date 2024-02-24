@@ -1,10 +1,11 @@
-use std::{fs::remove_dir_all, io, path::Path};
+use std::{fs::remove_dir_all, io};
 
 use crate::config::{LoadConfig, ProjectConfig};
 
+use super::get_project_path;
+
 pub fn clean(config_file: String) -> io::Result<()> {
-    let project_config_path = Path::new(&config_file);
-    let project_path = project_config_path.parent().unwrap_or(Path::new("./"));
+    let (project_path, project_config_path) = &get_project_path(&config_file);
 
     match ProjectConfig::load(project_config_path) {
         Ok(project_config) => {

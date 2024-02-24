@@ -12,13 +12,12 @@ use crossterm::{
 
 use crate::config::{LoadConfig, ProjectConfig};
 
-use super::build;
+use super::{build, get_project_path};
 
 pub fn run(config_file: String, release: bool, file: PathBuf, args: Vec<String>) -> io::Result<()> {
     build(config_file.clone(), release)?;
 
-    let project_config_path = Path::new(&config_file);
-    let project_path = project_config_path.parent().unwrap_or(Path::new("./"));
+    let (project_path, project_config_path) = &get_project_path(&config_file);
 
     match ProjectConfig::load(project_config_path) {
         Ok(project_config) => {

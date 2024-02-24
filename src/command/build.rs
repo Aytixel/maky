@@ -19,9 +19,10 @@ use crate::{
     file::{compile::compile, get_imports, link::link, scan_dir},
 };
 
+use super::get_project_path;
+
 pub fn build(config_file: String, release: bool) -> io::Result<()> {
-    let project_config_path = Path::new(&config_file);
-    let project_path = project_config_path.parent().unwrap_or(Path::new("./"));
+    let (project_path, project_config_path) = &get_project_path(&config_file);
     let time = Instant::now();
 
     execute!(
