@@ -15,13 +15,13 @@ use crossterm::{
 use kdam::{tqdm, BarExt, Column, RichProgress, Spinner};
 
 use crate::{
-    config::{Config, LoadConfig, ProjectConfig, SaveConfig},
+    config::{LoadConfig, ProjectConfig, SaveConfig},
     file::{compile::compile, get_imports, link::link, scan_dir},
 };
 
-use super::get_project_path;
+use super::{add_mode_path, get_project_path};
 
-pub fn build(config_file: String, release: bool) -> io::Result<()> {
+pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()> {
     let (project_path, project_config_path) = &get_project_path(&config_file);
     let time = Instant::now();
 
@@ -68,9 +68,10 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                 project_config.includes.push(source.clone());
             }
 
-            let objects_dir_path = project_path.join(&project_config.objects);
+            let objects_dir_path =
+                add_mode_path(&project_path.join(&project_config.objects), release);
             if !objects_dir_path.is_dir() {
-                create_dir(&objects_dir_path)?;
+                create_dir_all(&objects_dir_path)?;
             }
 
             for library in project_config.libraries.values() {
@@ -87,8 +88,7 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
 
             project_config.includes.dedup();
 
-            let mut config = Config::load(project_path).unwrap_or_default();
-            let mut hash_hashmap = if config.release != release {
+            let mut hash_hashmap = if rebuild {
                 for entry in read_dir(&objects_dir_path)? {
                     if let Ok(entry) = entry {
                         let path = entry.path();
@@ -110,9 +110,6 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
             let mut h_h_link = AHashMap::new();
             let mut h_c_link = AHashMap::new();
             let mut c_h_link = AHashMap::new();
-
-            config.release = release;
-            config.save(project_path)?;
 
             for source in project_config.sources.iter() {
                 scan_dir(
@@ -199,7 +196,10 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                         .arg("-c")
                         .arg(file.0.strip_prefix(project_path).unwrap())
                         .arg("-o")
-                        .arg(project_config.objects.join(file.1.to_hex().as_str()))
+                        .arg(
+                            add_mode_path(&project_config.objects, release)
+                                .join(file.1.to_hex().as_str()),
+                        )
                         .spawn()
                         .unwrap(),
                 ));
@@ -236,6 +236,7 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                     command.stderr.unwrap().read_to_string(&mut buffer)?;
                     errors.push((file, buffer));
                 } else {
+                    println!("{:?} {:?}", file, new_hash_hashmap);
                     new_hash_hashmap.remove(file);
                 }
             }
@@ -360,7 +361,10 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
 
                 for c_file in file_to_link {
                     if let Some(hash) = new_hash_hashmap.get(c_file) {
-                        command.arg(project_config.objects.join(hash.to_hex().as_str()));
+                        command.arg(
+                            add_mode_path(&project_config.objects, release)
+                                .join(hash.to_hex().as_str()),
+                        );
                     } else {
                         return Err(io::Error::new(
                             io::ErrorKind::NotFound,
@@ -379,20 +383,13 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                     command.args(args);
                 }
 
-                let output_path = project_config
-                    .binaries
-                    .join(if release {
-                        Path::new("release")
-                    } else {
-                        Path::new("debug")
-                    })
-                    .join(
-                        main_file
-                            .parent()
-                            .unwrap_or(Path::new("./"))
-                            .strip_prefix(project_path)
-                            .unwrap_or(Path::new("./")),
-                    );
+                let output_path = add_mode_path(&project_config.binaries, release).join(
+                    main_file
+                        .parent()
+                        .unwrap_or(Path::new("./"))
+                        .strip_prefix(project_path)
+                        .unwrap_or(Path::new("./")),
+                );
                 let mut output_file = output_path.join(main_file.file_stem().unwrap());
 
                 create_dir_all(project_path.join(output_path)).unwrap();

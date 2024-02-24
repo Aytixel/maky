@@ -29,35 +29,6 @@ pub trait SaveConfig {
     fn save(&self, path: &Path) -> io::Result<()>;
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
-pub struct Config {
-    #[serde(default = "Config::default_bool")]
-    pub release: bool,
-}
-
-impl Config {
-    fn default_bool() -> bool {
-        false
-    }
-}
-
-impl LoadConfig for Config {
-    fn load(project_path: &Path) -> io::Result<Self> {
-        toml::from_str(&read_to_string(project_path.join(".maky/config.toml"))?)
-            .map_err(|error| io::Error::new(io::ErrorKind::Other, error))
-    }
-}
-
-impl SaveConfig for Config {
-    fn save(&self, project_path: &Path) -> io::Result<()> {
-        write(
-            project_path.join("./.maky/config.toml"),
-            toml::to_string_pretty(self)
-                .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?,
-        )
-    }
-}
-
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ProjectConfig {

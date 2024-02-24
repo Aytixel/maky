@@ -36,6 +36,10 @@ enum Commands {
         /// Build in release mode
         #[arg(long)]
         release: bool,
+
+        /// Rebuild every time
+        #[arg(long)]
+        rebuild: bool,
     },
 
     /// Build files then run the specified file
@@ -47,6 +51,10 @@ enum Commands {
         /// Build in release mode
         #[arg(long)]
         release: bool,
+
+        /// Rebuild every time
+        #[arg(long)]
+        rebuild: bool,
 
         /// Path of the source file to build and run
         file: PathBuf,
@@ -73,13 +81,15 @@ fn main() -> io::Result<()> {
             Commands::Build {
                 config_file,
                 release,
-            } => build(config_file, release)?,
+                rebuild,
+            } => build(config_file, release, rebuild)?,
             Commands::Run {
                 config_file,
                 release,
+                rebuild,
                 file,
                 args,
-            } => run(config_file, release, file, args)?,
+            } => run(config_file, release, rebuild, file, args)?,
             Commands::Init { path } => init(path)?,
             Commands::Clean { config_file } => clean(config_file)?,
         }

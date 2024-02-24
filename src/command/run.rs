@@ -14,8 +14,14 @@ use crate::config::{LoadConfig, ProjectConfig};
 
 use super::{build, get_project_path};
 
-pub fn run(config_file: String, release: bool, file: PathBuf, args: Vec<String>) -> io::Result<()> {
-    build(config_file.clone(), release)?;
+pub fn run(
+    config_file: String,
+    release: bool,
+    rebuild: bool,
+    file: PathBuf,
+    args: Vec<String>,
+) -> io::Result<()> {
+    build(config_file.clone(), release, rebuild)?;
 
     let (project_path, project_config_path) = &get_project_path(&config_file);
 

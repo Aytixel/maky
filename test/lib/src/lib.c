@@ -2,6 +2,6 @@
 
 #include "lib.h"
 
-extern void hello(int lol, int test) {
+extern void hello() {
 	printf("Hello ");
 }
