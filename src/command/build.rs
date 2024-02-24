@@ -368,13 +368,16 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                     }
                 }
 
-                let imports = get_imports(&{
-                    let mut code = String::new();
+                let imports = get_imports(
+                    &{
+                        let mut code = String::new();
 
-                    File::open(main_file)?.read_to_string(&mut code)?;
+                        File::open(main_file)?.read_to_string(&mut code)?;
 
-                    code
-                });
+                        code
+                    },
+                    main_file.extension().unwrap_or_default(),
+                );
 
                 for (library_name, args) in libraries_args.iter() {
                     if !imports.contains(library_name) {

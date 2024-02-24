@@ -7,7 +7,7 @@ use std::{
 
 use ahash::{AHashMap, AHashSet};
 use blake3::{hash, Hash};
-use hyperscan::{pattern, BlockDatabase, Builder, Matching, Patterns};
+use hyperscan::{BlockDatabase, Builder, Matching, Patterns};
 use once_cell::sync::Lazy;
 use tree_sitter::{Language, Parser};
 
@@ -16,38 +16,30 @@ use crate::config::ProjectConfig;
 pub mod compile;
 pub mod link;
 
-static GET_IMPORTS_REGEX: Lazy<BlockDatabase> = Lazy::new(|| {
-    pattern! {"//@import .*[\r\n]"; SINGLEMATCH}
-        .build()
-        .unwrap()
-});
+pub fn get_imports(code: &str, extension: &OsStr) -> Vec<String> {
+    if let Some(tree) = {
+        let mut parser = Parser::new();
 
-pub fn get_imports(code: &str) -> Vec<String> {
-    let mut imports = Vec::new();
+        parser
+            .set_language(get_language(extension).expect("Unknown file extension"))
+            .expect("Error loading parser grammar");
+        parser.parse(code, None)
+    } {
+        for i in 0..tree.root_node().child_count() {
+            let node = tree.root_node().child(i).unwrap();
+            let code = &code[node.byte_range()];
 
-    GET_IMPORTS_REGEX
-        .scan(
-            code,
-            &mut GET_IMPORTS_REGEX.alloc_scratch().unwrap(),
-            |_, from, to, _| {
-                imports.extend(
-                    code[from as usize..to as usize]
-                        .split(",")
-                        .map(str::trim)
-                        .map(str::to_string),
-                );
-                Matching::Continue
-            },
-        )
-        .unwrap();
-
-    if let Some(import) = imports.get_mut(0) {
-        if let Some(last) = import.split("//@import").last() {
-            *import = last.trim_start().to_string();
+            if node.kind() == "comment" && code.starts_with("//@import ") {
+                return code[10..]
+                    .split(",")
+                    .map(str::trim)
+                    .map(str::to_string)
+                    .collect::<Vec<String>>();
+            }
         }
     }
 
-    return imports;
+    return Vec::new();
 }
 
 pub fn scan_dir(
@@ -187,7 +179,7 @@ fn has_main(code: &str, extension: &OsStr) -> bool {
     } {
         for i in 0..tree.root_node().child_count() {
             if let Some(node) = tree.root_node().child(i).unwrap().child(1) {
-                if node.kind_id() == 222
+                if node.kind() == "function_declarator"
                     && node.child_count() > 0
                     && &code[node.child(0).unwrap().byte_range()] == "main"
                 {
