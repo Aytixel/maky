@@ -368,10 +368,7 @@ pub fn build(config_file: String, release: bool) -> io::Result<()> {
                     }
                 }
 
-                let imports = get_imports(
-                    &read_to_string(main_file)?,
-                    main_file.extension().unwrap_or_default(),
-                );
+                let imports = get_imports(&read_to_string(main_file)?);
 
                 for (library_name, args) in libraries_args.iter() {
                     if !imports.contains(library_name) {

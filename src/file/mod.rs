@@ -7,8 +7,6 @@ use std::{
 
 use ahash::{AHashMap, AHashSet};
 use blake3::{hash, Hash};
-use hyperscan::{BlockDatabase, Builder, Matching, Patterns};
-use once_cell::sync::Lazy;
 use tree_sitter::{Language, Parser};
 
 use crate::config::ProjectConfig;
@@ -16,27 +14,23 @@ use crate::config::ProjectConfig;
 pub mod compile;
 pub mod link;
 
-pub fn get_imports(code: &str, extension: &OsStr) -> Vec<String> {
-    if let Some(tree) = {
-        let mut parser = Parser::new();
+const IMPORT_LENGTH: usize = 10;
 
-        parser
-            .set_language(get_language(extension).expect("Unknown file extension"))
-            .expect("Error loading parser grammar");
-        parser.parse(code, None)
-    } {
-        for i in 0..tree.root_node().child_count() {
-            let node = tree.root_node().child(i).unwrap();
-            let code = &code[node.byte_range()];
+pub fn get_imports(code: &str) -> Vec<String> {
+    if let Some(index) = code.find("//@import ") {
+        let code = code[index + IMPORT_LENGTH
+            ..index
+                + IMPORT_LENGTH
+                + code[index + INCLUDE_LENGTH..]
+                    .find("\n")
+                    .expect("No end of line found")]
+            .trim();
 
-            if node.kind() == "comment" && code.starts_with("//@import ") {
-                return code[10..]
-                    .split(",")
-                    .map(str::trim)
-                    .map(str::to_string)
-                    .collect::<Vec<String>>();
-            }
-        }
+        return code
+            .split(",")
+            .map(str::trim)
+            .map(str::to_string)
+            .collect::<Vec<String>>();
     }
 
     return Vec::new();
@@ -108,60 +102,44 @@ pub fn scan_dir(
     return Ok(());
 }
 
-static GET_INCLUDES_REGEX: Lazy<BlockDatabase> = Lazy::new(|| {
-    r#"
-    /"(.*)"/
-    /<(.*)>/
-    "#
-    .parse::<Patterns>()
-    .unwrap()
-    .into_iter()
-    .map(|pattern| pattern.left_most())
-    .collect::<Patterns>()
-    .build()
-    .unwrap()
-});
+const INCLUDE_LENGTH: usize = 8;
 
 fn get_includes(path: &Path, include_path_vec: &Vec<PathBuf>, code: &str) -> AHashSet<PathBuf> {
     let mut include_hashset = AHashSet::new();
     let parent_path = path.parent().unwrap_or(Path::new("./")).to_path_buf();
 
-    for line in code.lines() {
-        let line = line.trim();
+    'main: for (index, _) in code.match_indices("#include") {
+        let code = code[index + INCLUDE_LENGTH
+            ..index
+                + INCLUDE_LENGTH
+                + code[index + INCLUDE_LENGTH..]
+                    .find("\n")
+                    .expect("No end of line found")]
+            .trim();
 
-        if line.starts_with("#include") {
-            GET_INCLUDES_REGEX
-                .scan(
-                    line,
-                    &mut GET_INCLUDES_REGEX.alloc_scratch().unwrap(),
-                    |_, from, to, _| {
-                        let path = Path::new(&line[from as usize + 1..to as usize - 1]);
+        if code.len() > 2 {
+            let path = Path::new(&code[1..code.len() - 1]);
 
-                        if path.is_file() {
-                            include_hashset.insert(path.to_path_buf());
-                            return Matching::Continue;
-                        }
+            if path.is_file() {
+                include_hashset.insert(path.to_path_buf());
+                continue 'main;
+            }
 
-                        let path_with_parent = parent_path.join(path);
+            let path_with_parent = parent_path.join(path);
 
-                        if path_with_parent.is_file() {
-                            include_hashset.insert(path_with_parent.to_path_buf());
-                            return Matching::Continue;
-                        }
+            if path_with_parent.is_file() {
+                include_hashset.insert(path_with_parent.to_path_buf());
+                continue 'main;
+            }
 
-                        for include_path in include_path_vec {
-                            let path = include_path.join(path);
+            for include_path in include_path_vec {
+                let path = include_path.join(path);
 
-                            if path.is_file() {
-                                include_hashset.insert(path.to_path_buf());
-                                return Matching::Continue;
-                            }
-                        }
-
-                        Matching::Continue
-                    },
-                )
-                .unwrap();
+                if path.is_file() {
+                    include_hashset.insert(path.to_path_buf());
+                    continue 'main;
+                }
+            }
         }
     }
 
