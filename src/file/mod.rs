@@ -152,17 +152,19 @@ fn has_main(code: &str, extension: &OsStr) -> bool {
         r#"
         (function_declarator
             declarator: (identifier) @name
+            (#eq? @name "main")
         )
         "#,
     )
     .expect("Error building parser query");
     let mut query_cursor = QueryCursor::new();
-    let query_matches = query_cursor.matches(&query, tree.root_node(), code.as_bytes());
 
-    for query_match in query_matches {
-        if &code[query_match.captures[0].node.byte_range()] == "main" {
-            return true;
-        }
+    if query_cursor
+        .matches(&query, tree.root_node(), code.as_bytes())
+        .next()
+        .is_some()
+    {
+        return true;
     }
 
     false
