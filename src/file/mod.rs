@@ -7,7 +7,7 @@ use std::{
 
 use ahash::{AHashMap, AHashSet};
 use blake3::{hash, Hash};
-use tree_sitter::{Language, Parser};
+use tree_sitter::{Language, Parser, Query, QueryCursor};
 
 use crate::config::ProjectConfig;
 
@@ -138,23 +138,30 @@ fn get_includes(path: &Path, include_path_vec: &Vec<PathBuf>, code: &str) -> AHa
 }
 
 fn has_main(code: &str, extension: &OsStr) -> bool {
-    if let Some(tree) = {
+    let language = get_language(extension).expect("Unknown file extension");
+    let tree = {
         let mut parser = Parser::new();
 
         parser
-            .set_language(get_language(extension).expect("Unknown file extension"))
+            .set_language(language)
             .expect("Error loading parser grammar");
-        parser.parse(code, None)
-    } {
-        for i in 0..tree.root_node().child_count() {
-            if let Some(node) = tree.root_node().child(i).unwrap().child(1) {
-                if node.kind() == "function_declarator"
-                    && node.child_count() > 0
-                    && &code[node.child(0).unwrap().byte_range()] == "main"
-                {
-                    return true;
-                }
-            }
+        parser.parse(code, None).expect("Error parsing file")
+    };
+    let query = Query::new(
+        language,
+        r#"
+        (function_declarator
+            declarator: (identifier) @name
+        )
+        "#,
+    )
+    .expect("Error building parser query");
+    let mut query_cursor = QueryCursor::new();
+    let query_matches = query_cursor.matches(&query, tree.root_node(), code.as_bytes());
+
+    for query_match in query_matches {
+        if &code[query_match.captures[0].node.byte_range()] == "main" {
+            return true;
         }
     }
 
