@@ -16,19 +16,20 @@ use super::get_includes;
 pub fn link(
     project_config: &ProjectConfig,
     main_hashset: &AHashSet<PathBuf>,
+    lib_hashmap: &AHashMap<PathBuf, String>,
     files_to_compile: &AHashMap<PathBuf, Hash>,
     h_c_link: &AHashMap<PathBuf, AHashSet<PathBuf>>,
     c_h_link: &AHashMap<PathBuf, AHashSet<PathBuf>>,
-) -> io::Result<Vec<(PathBuf, AHashSet<PathBuf>)>> {
+) -> io::Result<Vec<(PathBuf, Option<String>, AHashSet<PathBuf>)>> {
     let h_c_link_filtered = filter_h_c_link(h_c_link)?;
     let mut files_to_link = Vec::new();
 
-    for main_file in main_hashset.iter() {
+    let mut link_files = |file: &Path, lib_name_option: Option<String>| -> io::Result<()> {
         let mut file_to_link = AHashSet::new();
         let mut already_explored_h = AHashSet::new();
         let mut need_to_be_link = false;
 
-        for h_file in c_h_link[main_file].iter() {
+        for h_file in c_h_link[file].iter() {
             find_h(project_config, h_file, &mut already_explored_h)?;
         }
 
@@ -44,15 +45,25 @@ pub fn link(
             }
         }
 
-        if files_to_compile.contains_key(main_file) {
+        if files_to_compile.contains_key(file) {
             need_to_be_link = true;
         }
 
-        file_to_link.insert(main_file.to_path_buf());
+        file_to_link.insert(file.to_path_buf());
 
         if need_to_be_link {
-            files_to_link.push((main_file.to_path_buf(), file_to_link));
+            files_to_link.push((file.to_path_buf(), lib_name_option, file_to_link));
         }
+
+        Ok(())
+    };
+
+    for main_file in main_hashset.iter() {
+        link_files(main_file, None)?;
+    }
+
+    for (lib_file, lib_name) in lib_hashmap.iter() {
+        link_files(lib_file, Some(lib_name.clone()))?;
     }
 
     Ok(files_to_link)

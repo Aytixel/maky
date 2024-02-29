@@ -14,11 +14,11 @@ use crate::config::ProjectConfig;
 pub mod compile;
 pub mod link;
 
-const IMPORT_LENGTH: usize = 10;
+const IMPORT_PATTERN: &str = "//@import ";
 
 pub fn get_imports(code: &str) -> Vec<String> {
-    if let Some(index) = code.find("//@import ") {
-        let index = index + IMPORT_LENGTH;
+    if let Some(index) = code.find(IMPORT_PATTERN) {
+        let index = index + IMPORT_PATTERN.len();
 
         return code[index..index + code[index..].find("\n").expect("No end of line found")]
             .trim()
@@ -31,10 +31,27 @@ pub fn get_imports(code: &str) -> Vec<String> {
     return Vec::new();
 }
 
+const LIB_PATTERN: &str = "//@lib ";
+
+pub fn get_lib(code: &str) -> Option<String> {
+    if let Some(index) = code.find(LIB_PATTERN) {
+        let index = index + LIB_PATTERN.len();
+
+        return Some(
+            code[index..index + code[index..].find("\n").expect("No end of line found")]
+                .trim()
+                .to_string(),
+        );
+    }
+
+    return None;
+}
+
 pub fn scan_dir(
     project_config: &ProjectConfig,
     dir_path: &Path,
     main_hashset: &mut AHashSet<PathBuf>,
+    lib_hashmap: &mut AHashMap<PathBuf, String>,
     h_h_link: &mut AHashMap<PathBuf, AHashSet<PathBuf>>,
     h_c_link: &mut AHashMap<PathBuf, AHashSet<PathBuf>>,
     c_h_link: &mut AHashMap<PathBuf, AHashSet<PathBuf>>,
@@ -62,6 +79,10 @@ pub fn scan_dir(
                         if has_main(code, extension) {
                             main_hashset.insert(path.clone());
                         }
+
+                        if let Some(lib_name) = get_lib(code) {
+                            lib_hashmap.insert(path.clone(), lib_name);
+                        }
                     }
 
                     hash_hashmap.insert(path.clone(), hash(code.as_bytes()));
@@ -85,6 +106,7 @@ pub fn scan_dir(
                     project_config,
                     &path,
                     main_hashset,
+                    lib_hashmap,
                     h_h_link,
                     h_c_link,
                     c_h_link,
@@ -97,14 +119,14 @@ pub fn scan_dir(
     return Ok(());
 }
 
-const INCLUDE_LENGTH: usize = 8;
+const INCLUDE_PATTERN: &str = "#include";
 
 fn get_includes(path: &Path, include_path_vec: &Vec<PathBuf>, code: &str) -> AHashSet<PathBuf> {
     let mut include_hashset = AHashSet::new();
     let parent_path = path.parent().unwrap_or(Path::new("./")).to_path_buf();
 
-    'main: for (index, _) in code.match_indices("#include") {
-        let index = index + INCLUDE_LENGTH;
+    'main: for (index, _) in code.match_indices(INCLUDE_PATTERN) {
+        let index = index + INCLUDE_PATTERN.len();
         let code =
             code[index..index + code[index..].find("\n").expect("No end of line found")].trim();
 

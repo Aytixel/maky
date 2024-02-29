@@ -107,6 +107,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
             };
             let mut new_hash_hashmap = AHashMap::new();
             let mut main_hashset = AHashSet::new();
+            let mut lib_hashmap = AHashMap::new();
             let mut h_h_link = AHashMap::new();
             let mut h_c_link = AHashMap::new();
             let mut c_h_link = AHashMap::new();
@@ -116,6 +117,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
                     &project_config,
                     &project_path.join(source),
                     &mut main_hashset,
+                    &mut lib_hashmap,
                     &mut h_h_link,
                     &mut h_c_link,
                     &mut c_h_link,
@@ -208,6 +210,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
             let files_to_link = link(
                 &project_config,
                 &main_hashset,
+                &lib_hashmap,
                 &files_to_compile,
                 &h_c_link,
                 &c_h_link,
@@ -345,7 +348,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
                 libraries_args
             };
 
-            for (main_file, file_to_link) in &files_to_link {
+            for (file, lib_name_option, file_to_link) in &files_to_link {
                 let mut command = Command::new(&project_config.compiler);
 
                 command
@@ -357,6 +360,10 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
                     command.arg("-g").arg("-Wall");
                 } else {
                     command.arg("-s");
+                }
+
+                if lib_name_option.is_some() {
+                    command.arg("--shared");
                 }
 
                 for c_file in file_to_link {
@@ -373,7 +380,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
                     }
                 }
 
-                let imports = get_imports(&read_to_string(main_file)?);
+                let imports = get_imports(&read_to_string(file)?);
 
                 for (library_name, args) in libraries_args.iter() {
                     if !imports.contains(library_name) {
@@ -383,23 +390,33 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
                     command.args(args);
                 }
 
-                let output_path = add_mode_path(&project_config.binaries, release).join(
-                    main_file
-                        .parent()
-                        .unwrap_or(Path::new("./"))
-                        .strip_prefix(project_path)
-                        .unwrap_or(Path::new("./")),
-                );
-                let mut output_file = output_path.join(main_file.file_stem().unwrap());
+                let output_path;
+                let mut output_file;
+
+                if let Some(lib_name) = lib_name_option {
+                    output_path = add_mode_path(&project_config.binaries, release);
+                    output_file = output_path.join(
+                        env::consts::FAMILY
+                            .eq("unix")
+                            .then_some("lib".to_string())
+                            .unwrap_or_default()
+                            + lib_name,
+                    );
+                    output_file.set_extension(env::consts::DLL_EXTENSION);
+                } else {
+                    output_path = add_mode_path(&project_config.binaries, release).join(
+                        file.parent()
+                            .unwrap_or(Path::new("./"))
+                            .strip_prefix(project_path)
+                            .unwrap_or(Path::new("./")),
+                    );
+                    output_file = output_path.join(file.file_stem().unwrap());
+                    output_file.set_extension(env::consts::EXE_EXTENSION);
+                }
 
                 create_dir_all(project_path.join(output_path)).unwrap();
 
-                output_file.set_extension(env::consts::EXE_EXTENSION);
-
-                commands.push((
-                    main_file,
-                    command.arg("-o").arg(output_file).spawn().unwrap(),
-                ));
+                commands.push((file, command.arg("-o").arg(output_file).spawn().unwrap()));
             }
 
             let mut errors = Vec::new();
