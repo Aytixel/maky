@@ -363,7 +363,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
                 }
 
                 if lib_name_option.is_some() {
-                    command.arg("--shared");
+                    command.arg("--shared").arg("-fpic");
                 }
 
                 for c_file in file_to_link {
