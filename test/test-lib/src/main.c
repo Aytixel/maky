@@ -1,5 +1,6 @@
-#include "lib.h"
+#include <lib/lib.h>
 
+//@import test
 int main()
 {
 	hello();

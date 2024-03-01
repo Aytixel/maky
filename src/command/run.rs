@@ -21,7 +21,7 @@ pub fn run(
     file: PathBuf,
     args: Vec<String>,
 ) -> io::Result<()> {
-    build(config_file.clone(), release, rebuild)?;
+    build(config_file.clone(), release, rebuild, true)?;
 
     let (project_path, project_config_path) = &get_project_path(&config_file);
 

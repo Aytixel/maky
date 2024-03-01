@@ -21,31 +21,33 @@ use crate::{
 
 use super::{add_mode_path, get_project_path};
 
-pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()> {
+pub fn build(config_file: String, release: bool, rebuild: bool, pretty: bool) -> io::Result<()> {
     let (project_path, project_config_path) = &get_project_path(&config_file);
     let time = Instant::now();
 
-    execute!(
-        stdout(),
-        SetForegroundColor(Color::parse_ansi("2;118;200;56").unwrap()),
-        Print(r"              _          ".to_string() + "\n"),
-        Print(r"  /\/\   __ _| | ___   _ ".to_string() + "\n"),
-        SetForegroundColor(Color::parse_ansi("2;101;180;48").unwrap()),
-        Print(r" /    \ / _` | |/ / | | |".to_string() + "\n"),
-        SetForegroundColor(Color::parse_ansi("2;78;150;37").unwrap()),
-        Print(r"/ /\/\ \ (_| |   <| |_| |".to_string() + "\n"),
-        SetForegroundColor(Color::parse_ansi("2;54;120;26").unwrap()),
-        Print(r"\/    \/\__,_|_|\_\\__, |".to_string() + "\n"),
-        SetForegroundColor(Color::DarkMagenta),
-        if release {
-            Print(r"Release             ".bold())
-        } else {
-            Print(r"Dev                 ".bold())
-        },
-        SetForegroundColor(Color::parse_ansi("2;24;80;11").unwrap()),
-        Print(r"|___/".to_string() + "\n\n"),
-        ResetColor
-    )?;
+    if pretty {
+        execute!(
+            stdout(),
+            SetForegroundColor(Color::parse_ansi("2;118;200;56").unwrap()),
+            Print(r"              _          ".to_string() + "\n"),
+            Print(r"  /\/\   __ _| | ___   _ ".to_string() + "\n"),
+            SetForegroundColor(Color::parse_ansi("2;101;180;48").unwrap()),
+            Print(r" /    \ / _` | |/ / | | |".to_string() + "\n"),
+            SetForegroundColor(Color::parse_ansi("2;78;150;37").unwrap()),
+            Print(r"/ /\/\ \ (_| |   <| |_| |".to_string() + "\n"),
+            SetForegroundColor(Color::parse_ansi("2;54;120;26").unwrap()),
+            Print(r"\/    \/\__,_|_|\_\\__, |".to_string() + "\n"),
+            SetForegroundColor(Color::DarkMagenta),
+            if release {
+                Print(r"Release             ".bold())
+            } else {
+                Print(r"Dev                 ".bold())
+            },
+            SetForegroundColor(Color::parse_ansi("2;24;80;11").unwrap()),
+            Print(r"|___/".to_string() + "\n\n"),
+            ResetColor
+        )?;
+    }
 
     match ProjectConfig::load(project_config_path) {
         Ok(mut project_config) => {
@@ -74,9 +76,17 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
                 create_dir_all(&objects_dir_path)?;
             }
 
+            for path in project_config.dependencies.values_mut() {
+                *path = project_path.join(path.clone());
+            }
+
             for library in project_config.libraries.values() {
                 project_config.includes.extend_from_slice(&library.includes);
             }
+
+            project_config
+                .includes
+                .push(Path::new(".maky/include").to_path_buf());
 
             for include in project_config.includes.iter_mut() {
                 *include = project_path.join(&include);
@@ -87,6 +97,120 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
             }
 
             project_config.includes.dedup();
+
+            let mut dependencies_progress_bar_option =
+                if pretty && project_config.dependencies.len() > 0 {
+                    let mut dependencies_progress_bar = RichProgress::new(
+                        tqdm!(total = project_config.dependencies.len()),
+                        vec![
+                            Column::Text("[bold darkgreen]Dependencies".to_string()),
+                            Column::Spinner(Spinner::new(
+                                &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+                                80.0,
+                                1.0,
+                            )),
+                            Column::Text("[bold blue]?".to_string()),
+                            Column::Animation,
+                            Column::Percentage(1),
+                            Column::Text("•".to_string()),
+                            Column::CountTotal,
+                            Column::Text("•".to_string()),
+                            Column::ElapsedTime,
+                        ],
+                    );
+                    dependencies_progress_bar.refresh().ok();
+
+                    Some(dependencies_progress_bar)
+                } else {
+                    None
+                };
+
+            let mut commands = Vec::new();
+
+            for (dependency_name, dependency_path) in project_config.dependencies.iter() {
+                let mut command = Command::new(env::current_exe().unwrap());
+
+                command
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::piped())
+                    .arg("build")
+                    .arg("-f")
+                    .arg(dependency_path)
+                    .arg("--pretty")
+                    .arg("false");
+
+                if release {
+                    command.arg("--release");
+                }
+
+                if rebuild {
+                    command.arg("--rebuild");
+                }
+
+                commands.push((dependency_name, dependency_path, command.spawn().unwrap()))
+            }
+
+            let mut errors = Vec::new();
+
+            for (dependency_name, _dependency_path, mut command) in commands.drain(..) {
+                if let Some(dependencies_progress_bar) = &mut dependencies_progress_bar_option {
+                    dependencies_progress_bar.columns[2] =
+                        Column::Text("[bold blue]".to_string() + &dependency_name);
+                    dependencies_progress_bar.update(1)?;
+                }
+
+                if let Ok(exit_code) = command.wait() {
+                    if exit_code.success() {
+                        /*
+                           use _dependency_path to get dependency config then get dependency includes
+                           dependency includes will be stored in .maky/include/{dependency_name}/...
+                        */
+                    }
+
+                    let mut buffer = String::new();
+
+                    if let Some(stderr) = command.stderr.as_mut() {
+                        stderr.read_to_string(&mut buffer)?;
+                        errors.push((dependency_name.clone(), buffer));
+                    }
+                }
+            }
+
+            if let Some(dependencies_progress_bar) = &mut dependencies_progress_bar_option {
+                dependencies_progress_bar.columns.drain(1..6);
+                dependencies_progress_bar.clear().ok();
+                dependencies_progress_bar.refresh().ok();
+
+                println!();
+            }
+
+            if !errors.is_empty() {
+                let mut is_first = true;
+
+                for (dependency_name, error) in errors.iter() {
+                    let error = error.trim_end();
+
+                    if !error.is_empty() {
+                        if is_first {
+                            eprintln!();
+
+                            is_first = false;
+                        }
+
+                        execute!(
+                            stderr(),
+                            SetForegroundColor(Color::Red),
+                            Print("Errors : ".bold()),
+                            ResetColor,
+                            SetForegroundColor(Color::Cyan),
+                            Print(dependency_name.clone().bold()),
+                            ResetColor,
+                        )?;
+
+                        eprintln!("{error}\n");
+                    }
+                }
+            }
 
             let mut hash_hashmap = if rebuild {
                 for entry in read_dir(&objects_dir_path)? {
@@ -133,7 +257,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
                 &new_hash_hashmap,
             );
 
-            let mut compile_progress_bar_option = if files_to_compile.len() > 0 {
+            let mut compile_progress_bar_option = if pretty && files_to_compile.len() > 0 {
                 let mut compile_progress_bar = RichProgress::new(
                     tqdm!(total = files_to_compile.len()),
                     vec![
@@ -182,6 +306,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
 
                 command
                     .current_dir(project_path)
+                    .stdout(Stdio::null())
                     .stderr(Stdio::piped())
                     .arg("-fdiagnostics-color=always");
 
@@ -226,7 +351,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
                                 .unwrap_or(&file)
                                 .to_string_lossy(),
                     );
-                    compile_progress_bar.update(1).ok();
+                    compile_progress_bar.update(1)?;
                 }
 
                 if let Ok(exit_code) = command.wait() {
@@ -236,10 +361,11 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
 
                     let mut buffer = String::new();
 
-                    command.stderr.unwrap().read_to_string(&mut buffer)?;
-                    errors.push((file, buffer));
+                    if let Some(stderr) = command.stderr.as_mut() {
+                        stderr.read_to_string(&mut buffer)?;
+                        errors.push((file, buffer));
+                    }
                 } else {
-                    println!("{:?} {:?}", file, new_hash_hashmap);
                     new_hash_hashmap.remove(file);
                 }
             }
@@ -258,7 +384,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
                 for (file, error) in errors.iter() {
                     if !error.is_empty() {
                         if is_first {
-                            println!();
+                            eprintln!();
 
                             is_first = false;
                         }
@@ -277,7 +403,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
                 }
             }
 
-            let mut link_progress_bar_option = if files_to_link.len() > 0 {
+            let mut link_progress_bar_option = if pretty && files_to_link.len() > 0 {
                 let mut link_progress_bar = RichProgress::new(
                     tqdm!(total = files_to_link.len()),
                     vec![
@@ -353,6 +479,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
 
                 command
                     .current_dir(project_path)
+                    .stdout(Stdio::null())
                     .stderr(Stdio::piped())
                     .arg("-fdiagnostics-color=always");
 
@@ -427,7 +554,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
                                 .unwrap_or(file)
                                 .to_string_lossy(),
                     );
-                    link_progress_bar.update(1).ok();
+                    link_progress_bar.update(1)?;
                 }
 
                 if let Ok(exit_code) = command.wait() {
@@ -437,8 +564,10 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
 
                     let mut buffer = String::new();
 
-                    command.stderr.unwrap().read_to_string(&mut buffer)?;
-                    errors.push((file, buffer));
+                    if let Some(stderr) = command.stderr.as_mut() {
+                        stderr.read_to_string(&mut buffer)?;
+                        errors.push((file, buffer));
+                    }
                 } else {
                     new_hash_hashmap.remove(file);
                 }
@@ -460,7 +589,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
                 for (file, error) in errors.iter() {
                     if !error.is_empty() {
                         if is_first {
-                            println!();
+                            eprintln!();
 
                             is_first = false;
                         }
@@ -479,18 +608,20 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
                 }
             }
 
-            execute!(
-                stdout(),
-                SetForegroundColor(Color::DarkGreen),
-                Print("    Finished ".bold()),
-                ResetColor,
-                Print(if release {
-                    "release [optimized]"
-                } else {
-                    "dev [unoptimized + debuginfo]"
-                }),
-                Print(format!(" target(s) in {:.2?}\n", time.elapsed()))
-            )?;
+            if pretty {
+                execute!(
+                    stdout(),
+                    SetForegroundColor(Color::DarkGreen),
+                    Print("    Finished ".bold()),
+                    ResetColor,
+                    Print(if release {
+                        "release [optimized]"
+                    } else {
+                        "dev [unoptimized + debuginfo]"
+                    }),
+                    Print(format!(" target(s) in {:.2?}\n", time.elapsed()))
+                )?;
+            }
         }
         Err(error) => ProjectConfig::handle_error(error, project_config_path)?,
     }

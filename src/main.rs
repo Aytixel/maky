@@ -8,7 +8,7 @@ use std::{
     path::PathBuf,
 };
 
-use clap::{command, Parser, Subcommand};
+use clap::{command, ArgAction, Parser, Subcommand};
 
 use crate::command::{build, clean, init, run};
 
@@ -40,6 +40,10 @@ enum Commands {
         /// Rebuild every time
         #[arg(long)]
         rebuild: bool,
+
+        /// Enable a pretty display
+        #[arg(long, action=ArgAction::Set, default_value_t = true)]
+        pretty: bool,
     },
 
     /// Build files then run the specified file
@@ -82,7 +86,8 @@ fn main() -> io::Result<()> {
                 config_file,
                 release,
                 rebuild,
-            } => build(config_file, release, rebuild)?,
+                pretty,
+            } => build(config_file, release, rebuild, pretty)?,
             Commands::Run {
                 config_file,
                 release,

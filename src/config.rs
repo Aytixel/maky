@@ -54,6 +54,10 @@ pub struct ProjectConfig {
     #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
     pub includes: Vec<PathBuf>,
 
+    #[serde(default = "ProjectConfig::default_dependencies")]
+    #[serde(alias = "deps")]
+    pub dependencies: AHashMap<String, PathBuf>,
+
     #[serde(default = "ProjectConfig::default_hashmap")]
     #[serde(alias = "libs")]
     pub libraries: AHashMap<String, LibConfig>,
@@ -87,7 +91,7 @@ impl ProjectConfig {
             execute!(
                 stderr(),
                 SetForegroundColor(Color::DarkRed),
-                Print("Project config file found !\n".bold()),
+                Print("Project config not found !\n".bold()),
                 ResetColor,
             )
         }
@@ -111,6 +115,10 @@ impl ProjectConfig {
 
     fn default_includes() -> Vec<PathBuf> {
         Vec::new()
+    }
+
+    fn default_dependencies() -> AHashMap<String, PathBuf> {
+        AHashMap::new()
     }
 
     fn default_hashmap<T>() -> AHashMap<String, T> {
