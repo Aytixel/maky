@@ -411,7 +411,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
                     output_file.set_extension(env::consts::EXE_EXTENSION);
                 }
 
-                create_dir_all(project_path.join(output_path)).unwrap();
+                create_dir_all(project_path.join(output_path))?;
 
                 commands.push((file, command.arg("-o").arg(output_file).spawn().unwrap()));
             }
