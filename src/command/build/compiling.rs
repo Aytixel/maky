@@ -14,15 +14,16 @@ use kdam::{tqdm, BarExt, Column, RichProgress, Spinner};
 
 use crate::{command::add_mode_path, config::ProjectConfig};
 
+use super::BuildFlags;
+
 pub fn compiling(
     project_path: &Path,
     project_config: &ProjectConfig,
     files_to_compile: &AHashMap<PathBuf, Hash>,
     new_hash_hashmap: &mut AHashMap<PathBuf, Hash>,
-    release: bool,
-    pretty: bool,
+    flags: &BuildFlags,
 ) -> io::Result<()> {
-    let mut compile_progress_bar_option = if pretty && files_to_compile.len() > 0 {
+    let mut compile_progress_bar_option = if flags.pretty && files_to_compile.len() > 0 {
         let mut compile_progress_bar = RichProgress::new(
             tqdm!(total = files_to_compile.len()),
             vec![
@@ -70,7 +71,7 @@ pub fn compiling(
             .stderr(Stdio::piped())
             .arg("-fdiagnostics-color=always");
 
-        if !release {
+        if !flags.release {
             command.arg("-O0").arg("-g").arg("-Wall");
         } else {
             command.arg("-O2");
@@ -83,7 +84,10 @@ pub fn compiling(
                 .arg("-c")
                 .arg(file.0.strip_prefix(project_path).unwrap())
                 .arg("-o")
-                .arg(add_mode_path(&project_config.objects, release).join(file.1.to_hex().as_str()))
+                .arg(
+                    add_mode_path(&project_config.objects, flags.release)
+                        .join(file.1.to_hex().as_str()),
+                )
                 .spawn()
                 .unwrap(),
         ));

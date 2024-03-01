@@ -26,11 +26,17 @@ use self::linking::linking;
 
 use super::{add_mode_path, get_project_path};
 
-pub fn build(config_file: String, release: bool, rebuild: bool, pretty: bool) -> io::Result<()> {
+pub struct BuildFlags {
+    pub release: bool,
+    pub rebuild: bool,
+    pub pretty: bool,
+}
+
+pub fn build(config_file: String, flags: BuildFlags) -> io::Result<()> {
     let (project_path, project_config_path) = &get_project_path(&config_file);
     let time = Instant::now();
 
-    if pretty {
+    if flags.pretty {
         execute!(
             stdout(),
             SetForegroundColor(Color::parse_ansi("2;118;200;56").unwrap()),
@@ -43,7 +49,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool, pretty: bool) ->
             SetForegroundColor(Color::parse_ansi("2;54;120;26").unwrap()),
             Print(r"\/    \/\__,_|_|\_\\__, |".to_string() + "\n"),
             SetForegroundColor(Color::DarkMagenta),
-            if release {
+            if flags.release {
                 Print(r"Release             ".bold())
             } else {
                 Print(r"Dev                 ".bold())
@@ -76,7 +82,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool, pretty: bool) ->
             }
 
             let objects_dir_path =
-                add_mode_path(&project_path.join(&project_config.objects), release);
+                add_mode_path(&project_path.join(&project_config.objects), flags.release);
             if !objects_dir_path.is_dir() {
                 create_dir_all(&objects_dir_path)?;
             }
@@ -93,9 +99,9 @@ pub fn build(config_file: String, release: bool, rebuild: bool, pretty: bool) ->
                 project_config.includes.push("/usr/include".into());
             }
 
-            dependencies(project_path, &project_config, release, rebuild, pretty)?;
+            dependencies(project_path, &project_config, &flags)?;
 
-            let mut hash_hashmap = if rebuild {
+            let mut hash_hashmap = if flags.rebuild {
                 for entry in read_dir(&objects_dir_path)? {
                     if let Ok(entry) = entry {
                         let path = entry.path();
@@ -146,8 +152,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool, pretty: bool) ->
                 &project_config,
                 &files_to_compile,
                 &mut new_hash_hashmap,
-                release,
-                pretty,
+                &flags,
             )?;
 
             let files_to_link = link(
@@ -165,17 +170,16 @@ pub fn build(config_file: String, release: bool, rebuild: bool, pretty: bool) ->
                 &project_config,
                 &files_to_link,
                 new_hash_hashmap,
-                release,
-                pretty,
+                &flags,
             )?;
 
-            if pretty {
+            if flags.pretty {
                 execute!(
                     stdout(),
                     SetForegroundColor(Color::DarkGreen),
                     Print("    Finished ".bold()),
                     ResetColor,
-                    Print(if release {
+                    Print(if flags.release {
                         "release [optimized]"
                     } else {
                         "dev [unoptimized + debuginfo]"

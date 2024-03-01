@@ -12,7 +12,7 @@ use crossterm::{
 
 use crate::config::{LoadConfig, ProjectConfig};
 
-use super::{build, get_project_path};
+use super::{build, get_project_path, BuildFlags};
 
 pub fn run(
     config_file: String,
@@ -21,7 +21,14 @@ pub fn run(
     file: PathBuf,
     args: Vec<String>,
 ) -> io::Result<()> {
-    build(config_file.clone(), release, rebuild, true)?;
+    build(
+        config_file.clone(),
+        BuildFlags {
+            release,
+            rebuild,
+            pretty: false,
+        },
+    )?;
 
     let (project_path, project_config_path) = &get_project_path(&config_file);
 

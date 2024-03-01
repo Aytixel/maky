@@ -20,15 +20,16 @@ use crate::{
     file::get_imports,
 };
 
+use super::BuildFlags;
+
 pub fn linking(
     project_path: &Path,
     project_config: &ProjectConfig,
     files_to_link: &Vec<(PathBuf, Option<String>, AHashSet<PathBuf>)>,
     mut new_hash_hashmap: AHashMap<PathBuf, Hash>,
-    release: bool,
-    pretty: bool,
+    flags: &BuildFlags,
 ) -> io::Result<()> {
-    let mut link_progress_bar_option = if pretty && files_to_link.len() > 0 {
+    let mut link_progress_bar_option = if flags.pretty && files_to_link.len() > 0 {
         let mut link_progress_bar = RichProgress::new(
             tqdm!(total = files_to_link.len()),
             vec![
@@ -110,7 +111,7 @@ pub fn linking(
             .stderr(Stdio::piped())
             .arg("-fdiagnostics-color=always");
 
-        if !release {
+        if !flags.release {
             command.arg("-g").arg("-Wall");
         } else {
             command.arg("-s");
@@ -123,7 +124,8 @@ pub fn linking(
         for c_file in file_to_link {
             if let Some(hash) = new_hash_hashmap.get(c_file) {
                 command.arg(
-                    add_mode_path(&project_config.objects, release).join(hash.to_hex().as_str()),
+                    add_mode_path(&project_config.objects, flags.release)
+                        .join(hash.to_hex().as_str()),
                 );
             } else {
                 continue 'file_to_link;
@@ -144,7 +146,7 @@ pub fn linking(
         let mut output_file;
 
         if let Some(lib_name) = lib_name_option {
-            output_path = add_mode_path(&project_config.binaries, release);
+            output_path = add_mode_path(&project_config.binaries, flags.release);
             output_file = output_path.join(
                 env::consts::FAMILY
                     .eq("unix")
@@ -154,7 +156,7 @@ pub fn linking(
             );
             output_file.set_extension(env::consts::DLL_EXTENSION);
         } else {
-            output_path = add_mode_path(&project_config.binaries, release).join(
+            output_path = add_mode_path(&project_config.binaries, flags.release).join(
                 file.parent()
                     .unwrap_or(Path::new("./"))
                     .strip_prefix(project_path)

@@ -13,38 +13,39 @@ use kdam::{tqdm, BarExt, Column, RichProgress, Spinner};
 
 use crate::config::ProjectConfig;
 
+use super::BuildFlags;
+
 pub fn dependencies(
     project_path: &Path,
     project_config: &ProjectConfig,
-    release: bool,
-    rebuild: bool,
-    pretty: bool,
+    flags: &BuildFlags,
 ) -> io::Result<()> {
-    let mut dependencies_progress_bar_option = if pretty && project_config.dependencies.len() > 0 {
-        let mut dependencies_progress_bar = RichProgress::new(
-            tqdm!(total = project_config.dependencies.len()),
-            vec![
-                Column::Text("[bold darkgreen]Dependencies".to_string()),
-                Column::Spinner(Spinner::new(
-                    &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
-                    80.0,
-                    1.0,
-                )),
-                Column::Text("[bold blue]?".to_string()),
-                Column::Animation,
-                Column::Percentage(1),
-                Column::Text("•".to_string()),
-                Column::CountTotal,
-                Column::Text("•".to_string()),
-                Column::ElapsedTime,
-            ],
-        );
-        dependencies_progress_bar.refresh().ok();
+    let mut dependencies_progress_bar_option =
+        if flags.pretty && project_config.dependencies.len() > 0 {
+            let mut dependencies_progress_bar = RichProgress::new(
+                tqdm!(total = project_config.dependencies.len()),
+                vec![
+                    Column::Text("[bold darkgreen]Dependencies".to_string()),
+                    Column::Spinner(Spinner::new(
+                        &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+                        80.0,
+                        1.0,
+                    )),
+                    Column::Text("[bold blue]?".to_string()),
+                    Column::Animation,
+                    Column::Percentage(1),
+                    Column::Text("•".to_string()),
+                    Column::CountTotal,
+                    Column::Text("•".to_string()),
+                    Column::ElapsedTime,
+                ],
+            );
+            dependencies_progress_bar.refresh().ok();
 
-        Some(dependencies_progress_bar)
-    } else {
-        None
-    };
+            Some(dependencies_progress_bar)
+        } else {
+            None
+        };
 
     let mut commands = Vec::new();
 
@@ -61,11 +62,11 @@ pub fn dependencies(
             .arg("--pretty")
             .arg("false");
 
-        if release {
+        if flags.release {
             command.arg("--release");
         }
 
-        if rebuild {
+        if flags.rebuild {
             command.arg("--rebuild");
         }
 

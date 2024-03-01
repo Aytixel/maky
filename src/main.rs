@@ -9,6 +9,7 @@ use std::{
 };
 
 use clap::{command, ArgAction, Parser, Subcommand};
+use command::BuildFlags;
 
 use crate::command::{build, clean, init, run};
 
@@ -87,7 +88,14 @@ fn main() -> io::Result<()> {
                 release,
                 rebuild,
                 pretty,
-            } => build(config_file, release, rebuild, pretty)?,
+            } => build(
+                config_file,
+                BuildFlags {
+                    release,
+                    rebuild,
+                    pretty,
+                },
+            )?,
             Commands::Run {
                 config_file,
                 release,
