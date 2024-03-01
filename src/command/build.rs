@@ -1,9 +1,11 @@
+mod compiling;
+mod dependencies;
+mod linking;
+
 use std::{
-    env,
-    fs::{create_dir, create_dir_all, read_dir, read_to_string, remove_dir, remove_file},
-    io::{self, stderr, stdout, Read},
+    fs::{create_dir, create_dir_all, read_dir, remove_dir, remove_file},
+    io::{self, stdout},
     path::Path,
-    process::{Command, Stdio},
     time::Instant,
 };
 
@@ -12,12 +14,15 @@ use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
-use kdam::{tqdm, BarExt, Column, RichProgress, Spinner};
 
 use crate::{
-    config::{LoadConfig, ProjectConfig, SaveConfig},
-    file::{compile::compile, get_imports, link::link, scan_dir},
+    config::{LoadConfig, ProjectConfig},
+    file::{compile::compile, link::link, scan_dir},
 };
+
+use self::compiling::compiling;
+use self::dependencies::dependencies;
+use self::linking::linking;
 
 use super::{add_mode_path, get_project_path};
 
@@ -76,10 +81,6 @@ pub fn build(config_file: String, release: bool, rebuild: bool, pretty: bool) ->
                 create_dir_all(&objects_dir_path)?;
             }
 
-            for path in project_config.dependencies.values_mut() {
-                *path = project_path.join(path.clone());
-            }
-
             for library in project_config.libraries.values() {
                 project_config.includes.extend_from_slice(&library.includes);
             }
@@ -92,119 +93,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool, pretty: bool) ->
                 project_config.includes.push("/usr/include".into());
             }
 
-            let mut dependencies_progress_bar_option =
-                if pretty && project_config.dependencies.len() > 0 {
-                    let mut dependencies_progress_bar = RichProgress::new(
-                        tqdm!(total = project_config.dependencies.len()),
-                        vec![
-                            Column::Text("[bold darkgreen]Dependencies".to_string()),
-                            Column::Spinner(Spinner::new(
-                                &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
-                                80.0,
-                                1.0,
-                            )),
-                            Column::Text("[bold blue]?".to_string()),
-                            Column::Animation,
-                            Column::Percentage(1),
-                            Column::Text("•".to_string()),
-                            Column::CountTotal,
-                            Column::Text("•".to_string()),
-                            Column::ElapsedTime,
-                        ],
-                    );
-                    dependencies_progress_bar.refresh().ok();
-
-                    Some(dependencies_progress_bar)
-                } else {
-                    None
-                };
-
-            let mut commands = Vec::new();
-
-            for (dependency_name, dependency_path) in project_config.dependencies.iter() {
-                let mut command = Command::new(env::current_exe().unwrap());
-
-                command
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::piped())
-                    .arg("build")
-                    .arg("-f")
-                    .arg(dependency_path)
-                    .arg("--pretty")
-                    .arg("false");
-
-                if release {
-                    command.arg("--release");
-                }
-
-                if rebuild {
-                    command.arg("--rebuild");
-                }
-
-                commands.push((dependency_name, dependency_path, command.spawn().unwrap()))
-            }
-
-            let mut errors = Vec::new();
-
-            for (dependency_name, _dependency_path, mut command) in commands.drain(..) {
-                if let Some(dependencies_progress_bar) = &mut dependencies_progress_bar_option {
-                    dependencies_progress_bar.columns[2] =
-                        Column::Text("[bold blue]".to_string() + &dependency_name);
-                    dependencies_progress_bar.update(1)?;
-                }
-
-                if let Ok(exit_code) = command.wait() {
-                    if exit_code.success() {
-                        /*
-                           use _dependency_path to get dependency config then get dependency includes
-                           dependency includes will be stored in .maky/include/{dependency_name}/...
-                        */
-                    }
-
-                    let mut buffer = String::new();
-
-                    if let Some(stderr) = command.stderr.as_mut() {
-                        stderr.read_to_string(&mut buffer)?;
-                        errors.push((dependency_name.clone(), buffer));
-                    }
-                }
-            }
-
-            if let Some(dependencies_progress_bar) = &mut dependencies_progress_bar_option {
-                dependencies_progress_bar.columns.drain(1..6);
-                dependencies_progress_bar.clear().ok();
-                dependencies_progress_bar.refresh().ok();
-
-                println!();
-            }
-
-            if !errors.is_empty() {
-                let mut is_first = true;
-
-                for (dependency_name, error) in errors.iter() {
-                    let error = error.trim_end();
-
-                    if !error.is_empty() {
-                        if is_first {
-                            eprintln!();
-
-                            is_first = false;
-                        }
-
-                        execute!(
-                            stderr(),
-                            SetForegroundColor(Color::Red),
-                            Print("Errors : ".bold()),
-                            ResetColor,
-                            SetForegroundColor(Color::Cyan),
-                            Print(dependency_name.clone().bold()),
-                            ResetColor,
-                        )?;
-
-                        eprintln!("{error}\n");
-                    }
-                }
-            }
+            dependencies(project_path, &project_config, release, rebuild, pretty)?;
 
             let mut hash_hashmap = if rebuild {
                 for entry in read_dir(&objects_dir_path)? {
@@ -224,7 +113,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool, pretty: bool) ->
                 AHashMap::load(project_path).unwrap_or_default()
             };
             let mut new_hash_hashmap = AHashMap::new();
-            let mut main_hashset = Vec::new();
+            let mut main_vec = Vec::new();
             let mut lib_hashmap = AHashMap::new();
             let mut h_h_link = AHashMap::new();
             let mut h_c_link = AHashMap::new();
@@ -232,10 +121,10 @@ pub fn build(config_file: String, release: bool, rebuild: bool, pretty: bool) ->
 
             for source in project_config.sources.iter() {
                 scan_dir(
-                    &project_path,
+                    project_path,
                     &project_config,
                     &project_path.join(source),
-                    &mut main_hashset,
+                    &mut main_vec,
                     &mut lib_hashmap,
                     &mut h_h_link,
                     &mut h_c_link,
@@ -252,351 +141,33 @@ pub fn build(config_file: String, release: bool, rebuild: bool, pretty: bool) ->
                 &new_hash_hashmap,
             );
 
-            let mut compile_progress_bar_option = if pretty && files_to_compile.len() > 0 {
-                let mut compile_progress_bar = RichProgress::new(
-                    tqdm!(total = files_to_compile.len()),
-                    vec![
-                        Column::Text("[bold darkgreen]   Compiling".to_string()),
-                        Column::Spinner(Spinner::new(
-                            &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
-                            80.0,
-                            1.0,
-                        )),
-                        Column::Text("[bold blue]?".to_string()),
-                        Column::Animation,
-                        Column::Percentage(1),
-                        Column::Text("•".to_string()),
-                        Column::CountTotal,
-                        Column::Text("•".to_string()),
-                        Column::ElapsedTime,
-                    ],
-                );
-                compile_progress_bar.refresh().ok();
-
-                Some(compile_progress_bar)
-            } else {
-                None
-            };
-
-            let mut commands = Vec::new();
-            let include_args = {
-                let mut include_args = Vec::new();
-
-                for include in project_config.includes.iter() {
-                    include_args.push("-I".to_string());
-                    include_args.push(include.to_string_lossy().to_string());
-                }
-
-                include_args
-            };
-
-            for file in files_to_compile.iter() {
-                let mut command = Command::new(&project_config.compiler);
-
-                command
-                    .current_dir(project_path)
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::piped())
-                    .arg("-fdiagnostics-color=always");
-
-                if !release {
-                    command.arg("-O0").arg("-g").arg("-Wall");
-                } else {
-                    command.arg("-O2");
-                }
-
-                commands.push((
-                    file.0,
-                    command
-                        .args(&include_args)
-                        .arg("-c")
-                        .arg(file.0.strip_prefix(project_path).unwrap())
-                        .arg("-o")
-                        .arg(
-                            add_mode_path(&project_config.objects, release)
-                                .join(file.1.to_hex().as_str()),
-                        )
-                        .spawn()
-                        .unwrap(),
-                ));
-            }
+            compiling(
+                project_path,
+                &project_config,
+                &files_to_compile,
+                &mut new_hash_hashmap,
+                release,
+                pretty,
+            )?;
 
             let files_to_link = link(
-                &project_path,
+                project_path,
                 &project_config,
-                &main_hashset,
+                &main_vec,
                 &lib_hashmap,
                 &files_to_compile,
                 &h_c_link,
                 &c_h_link,
             )?;
-            let mut errors = Vec::new();
 
-            for (file, mut command) in commands.drain(..) {
-                if let Some(compile_progress_bar) = &mut compile_progress_bar_option {
-                    compile_progress_bar.columns[2] = Column::Text(
-                        "[bold blue]".to_string()
-                            + &file
-                                .strip_prefix(project_path)
-                                .unwrap_or(&file)
-                                .to_string_lossy(),
-                    );
-                    compile_progress_bar.update(1)?;
-                }
-
-                if let Ok(exit_code) = command.wait() {
-                    if !exit_code.success() {
-                        new_hash_hashmap.remove(file);
-                    }
-
-                    let mut buffer = String::new();
-
-                    if let Some(stderr) = command.stderr.as_mut() {
-                        stderr.read_to_string(&mut buffer)?;
-                        errors.push((file, buffer));
-                    }
-                } else {
-                    new_hash_hashmap.remove(file);
-                }
-            }
-
-            if let Some(compile_progress_bar) = &mut compile_progress_bar_option {
-                compile_progress_bar.columns.drain(1..6);
-                compile_progress_bar.clear().ok();
-                compile_progress_bar.refresh().ok();
-
-                println!();
-            }
-
-            if !errors.is_empty() {
-                let mut is_first = true;
-
-                for (file, error) in errors.iter() {
-                    if !error.is_empty() {
-                        if is_first {
-                            eprintln!();
-
-                            is_first = false;
-                        }
-
-                        execute!(
-                            stderr(),
-                            SetForegroundColor(Color::Red),
-                            Print("Errors : ".bold()),
-                            ResetColor,
-                            Print(file.to_string_lossy()),
-                            Print("\n\n"),
-                        )?;
-
-                        eprintln!("{error}");
-                    }
-                }
-            }
-
-            let mut link_progress_bar_option = if pretty && files_to_link.len() > 0 {
-                let mut link_progress_bar = RichProgress::new(
-                    tqdm!(total = files_to_link.len()),
-                    vec![
-                        Column::Text("[bold darkgreen]     Linking".to_string()),
-                        Column::Spinner(Spinner::new(
-                            &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
-                            80.0,
-                            1.0,
-                        )),
-                        Column::Text("[bold blue]?".to_string()),
-                        Column::Animation,
-                        Column::Percentage(1),
-                        Column::Text("•".to_string()),
-                        Column::CountTotal,
-                        Column::Text("•".to_string()),
-                        Column::ElapsedTime,
-                    ],
-                );
-                link_progress_bar.refresh().ok();
-
-                Some(link_progress_bar)
-            } else {
-                None
-            };
-
-            let libraries_args = {
-                let mut libraries_args = AHashMap::new();
-
-                for (library_name, lib_config) in project_config.libraries.iter() {
-                    let mut args = Vec::new();
-
-                    args.push("-L".to_string());
-
-                    if let Some(directory) = lib_config.directories.get(0) {
-                        args.extend([
-                            directory.to_string_lossy().to_string(),
-                            "-Wl,-rpath".to_string(),
-                        ]);
-
-                        for directory in lib_config.directories.iter() {
-                            args.extend([
-                                directory.to_string_lossy().to_string(),
-                                "-Wl,-rpath".to_string(),
-                            ]);
-                        }
-                    }
-
-                    if cfg!(target_os = "linux") {
-                        args.extend([
-                            "/usr/local/lib/".to_string(),
-                            "-Wl,-rpath".to_string(),
-                            "/usr/lib/".to_string(),
-                            "-Wl,-rpath".to_string(),
-                            "/lib/x86_64-linux-gnu/".to_string(),
-                            "-Wl,-rpath".to_string(),
-                        ]);
-                    }
-
-                    args.push(".".to_string());
-
-                    for library in lib_config.library.iter() {
-                        args.push("-l".to_string() + library);
-                    }
-
-                    libraries_args.insert(library_name, args);
-                }
-
-                libraries_args
-            };
-
-            'file_to_link: for (file, lib_name_option, file_to_link) in &files_to_link {
-                let mut command = Command::new(&project_config.compiler);
-
-                command
-                    .current_dir(project_path)
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::piped())
-                    .arg("-fdiagnostics-color=always");
-
-                if !release {
-                    command.arg("-g").arg("-Wall");
-                } else {
-                    command.arg("-s");
-                }
-
-                if lib_name_option.is_some() {
-                    command.arg("--shared").arg("-fpic");
-                }
-
-                for c_file in file_to_link {
-                    if let Some(hash) = new_hash_hashmap.get(c_file) {
-                        command.arg(
-                            add_mode_path(&project_config.objects, release)
-                                .join(hash.to_hex().as_str()),
-                        );
-                    } else {
-                        continue 'file_to_link;
-                    }
-                }
-
-                let imports = get_imports(&read_to_string(file)?);
-
-                for (library_name, args) in libraries_args.iter() {
-                    if !imports.contains(library_name) {
-                        continue;
-                    }
-
-                    command.args(args);
-                }
-
-                let output_path;
-                let mut output_file;
-
-                if let Some(lib_name) = lib_name_option {
-                    output_path = add_mode_path(&project_config.binaries, release);
-                    output_file = output_path.join(
-                        env::consts::FAMILY
-                            .eq("unix")
-                            .then_some("lib".to_string())
-                            .unwrap_or_default()
-                            + lib_name,
-                    );
-                    output_file.set_extension(env::consts::DLL_EXTENSION);
-                } else {
-                    output_path = add_mode_path(&project_config.binaries, release).join(
-                        file.parent()
-                            .unwrap_or(Path::new("./"))
-                            .strip_prefix(project_path)
-                            .unwrap_or(Path::new("./")),
-                    );
-                    output_file = output_path.join(file.file_stem().unwrap());
-                    output_file.set_extension(env::consts::EXE_EXTENSION);
-                }
-
-                create_dir_all(project_path.join(output_path))?;
-
-                commands.push((file, command.arg("-o").arg(output_file).spawn().unwrap()));
-            }
-
-            let mut errors = Vec::new();
-
-            for (file, mut command) in commands.drain(..) {
-                if let Some(link_progress_bar) = &mut link_progress_bar_option {
-                    link_progress_bar.columns[2] = Column::Text(
-                        "[bold blue]".to_string()
-                            + &file
-                                .strip_prefix(project_path)
-                                .unwrap_or(file)
-                                .to_string_lossy(),
-                    );
-                    link_progress_bar.update(1)?;
-                }
-
-                if let Ok(exit_code) = command.wait() {
-                    if !exit_code.success() {
-                        new_hash_hashmap.remove(file);
-                    }
-
-                    let mut buffer = String::new();
-
-                    if let Some(stderr) = command.stderr.as_mut() {
-                        stderr.read_to_string(&mut buffer)?;
-                        errors.push((file, buffer));
-                    }
-                } else {
-                    new_hash_hashmap.remove(file);
-                }
-            }
-
-            new_hash_hashmap.save(project_path)?;
-
-            if let Some(link_progress_bar) = &mut link_progress_bar_option {
-                link_progress_bar.columns.drain(1..6);
-                link_progress_bar.clear().ok();
-                link_progress_bar.refresh().ok();
-
-                println!();
-            }
-
-            if !errors.is_empty() {
-                let mut is_first = true;
-
-                for (file, error) in errors.iter() {
-                    if !error.is_empty() {
-                        if is_first {
-                            eprintln!();
-
-                            is_first = false;
-                        }
-
-                        execute!(
-                            stderr(),
-                            SetForegroundColor(Color::Red),
-                            Print("Errors : ".bold()),
-                            ResetColor,
-                            Print(file.to_string_lossy()),
-                            Print("\n"),
-                        )?;
-
-                        eprintln!("{error}");
-                    }
-                }
-            }
+            linking(
+                project_path,
+                &project_config,
+                &files_to_link,
+                new_hash_hashmap,
+                release,
+                pretty,
+            )?;
 
             if pretty {
                 execute!(

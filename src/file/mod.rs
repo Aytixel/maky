@@ -51,7 +51,7 @@ pub fn scan_dir(
     project_path: &Path,
     project_config: &ProjectConfig,
     dir_path: &Path,
-    main_hashset: &mut Vec<PathBuf>,
+    main_vec: &mut Vec<PathBuf>,
     lib_hashmap: &mut AHashMap<PathBuf, String>,
     h_h_link: &mut AHashMap<PathBuf, AHashSet<PathBuf>>,
     h_c_link: &mut AHashMap<PathBuf, AHashSet<PathBuf>>,
@@ -79,7 +79,7 @@ pub fn scan_dir(
                         c_h_link.insert(path.clone(), includes.clone());
 
                         if has_main(code, extension) {
-                            main_hashset.push(path.clone());
+                            main_vec.push(path.clone());
                         }
 
                         if let Some(lib_name) = get_lib(code) {
@@ -108,7 +108,7 @@ pub fn scan_dir(
                     project_path,
                     project_config,
                     &path,
-                    main_hashset,
+                    main_vec,
                     lib_hashmap,
                     h_h_link,
                     h_c_link,

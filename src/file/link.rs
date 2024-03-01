@@ -16,7 +16,7 @@ use super::get_includes;
 pub fn link(
     project_path: &Path,
     project_config: &ProjectConfig,
-    main_hashset: &Vec<PathBuf>,
+    main_vec: &Vec<PathBuf>,
     lib_hashmap: &AHashMap<PathBuf, String>,
     files_to_compile: &AHashMap<PathBuf, Hash>,
     h_c_link: &AHashMap<PathBuf, AHashSet<PathBuf>>,
@@ -64,7 +64,7 @@ pub fn link(
         Ok(())
     };
 
-    for main_file in main_hashset.iter() {
+    for main_file in main_vec.iter() {
         link_files(main_file, None)?;
     }
 
