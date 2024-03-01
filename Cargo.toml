@@ -9,15 +9,15 @@ authors = ["Aytixel"]
 [dependencies]
 string_template = "0.2.1"
 pretok = "0.1.0"
-serde = { version = "1.0.193", features = ["derive"] }
-serde_with = "3.4.0"
-toml = "0.8.8"
-clap = { version = "4.4.10", features = ["derive"] }
+serde = { version = "1.0.197", features = ["derive"] }
+serde_with = "3.6.1"
+toml = "0.8.10"
+clap = { version = "4.5.1", features = ["derive"] }
 blake3 = "1.5.0"
 crossterm = "0.27.0"
-kdam = { version = "0.5.0", features = ["rich", "spinner"] }
-ahash = { version = "0.8.6", features = ["serde"] }
+kdam = { version = "0.5.1", features = ["rich", "spinner"] }
+ahash = { version = "0.8.10", features = ["serde"] }
 tree-sitter = "0.20.10"
 tree-sitter-c = "0.20.8"
 tree-sitter-cpp = "0.20.5"
-pkg-config = "0.3.27"
+pkg-config = "0.3.30"
