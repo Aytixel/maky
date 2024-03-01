@@ -348,7 +348,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
                 libraries_args
             };
 
-            for (file, lib_name_option, file_to_link) in &files_to_link {
+            'file_to_link: for (file, lib_name_option, file_to_link) in &files_to_link {
                 let mut command = Command::new(&project_config.compiler);
 
                 command
@@ -373,10 +373,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool) -> io::Result<()
                                 .join(hash.to_hex().as_str()),
                         );
                     } else {
-                        return Err(io::Error::new(
-                            io::ErrorKind::NotFound,
-                            format!("Object file for `{}` not found.", &c_file.to_string_lossy()),
-                        ));
+                        continue 'file_to_link;
                     }
                 }
 
