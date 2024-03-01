@@ -7,7 +7,7 @@ use std::{
     time::Instant,
 };
 
-use ahash::{AHashMap, AHashSet};
+use ahash::AHashMap;
 use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
@@ -88,15 +88,9 @@ pub fn build(config_file: String, release: bool, rebuild: bool, pretty: bool) ->
                 .includes
                 .push(Path::new(".maky/include").to_path_buf());
 
-            for include in project_config.includes.iter_mut() {
-                *include = project_path.join(&include);
-            }
-
             if cfg!(target_os = "linux") {
                 project_config.includes.push("/usr/include".into());
             }
-
-            project_config.includes.dedup();
 
             let mut dependencies_progress_bar_option =
                 if pretty && project_config.dependencies.len() > 0 {
@@ -230,7 +224,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool, pretty: bool) ->
                 AHashMap::load(project_path).unwrap_or_default()
             };
             let mut new_hash_hashmap = AHashMap::new();
-            let mut main_hashset = AHashSet::new();
+            let mut main_hashset = Vec::new();
             let mut lib_hashmap = AHashMap::new();
             let mut h_h_link = AHashMap::new();
             let mut h_c_link = AHashMap::new();
@@ -238,6 +232,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool, pretty: bool) ->
 
             for source in project_config.sources.iter() {
                 scan_dir(
+                    &project_path,
                     &project_config,
                     &project_path.join(source),
                     &mut main_hashset,
@@ -289,13 +284,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool, pretty: bool) ->
 
                 for include in project_config.includes.iter() {
                     include_args.push("-I".to_string());
-                    include_args.push(
-                        include
-                            .strip_prefix(project_path)
-                            .unwrap_or(include)
-                            .to_string_lossy()
-                            .to_string(),
-                    );
+                    include_args.push(include.to_string_lossy().to_string());
                 }
 
                 include_args
@@ -333,6 +322,7 @@ pub fn build(config_file: String, release: bool, rebuild: bool, pretty: bool) ->
             }
 
             let files_to_link = link(
+                &project_path,
                 &project_config,
                 &main_hashset,
                 &lib_hashmap,

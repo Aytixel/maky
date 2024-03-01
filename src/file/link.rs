@@ -14,8 +14,9 @@ use crate::config::ProjectConfig;
 use super::get_includes;
 
 pub fn link(
+    project_path: &Path,
     project_config: &ProjectConfig,
-    main_hashset: &AHashSet<PathBuf>,
+    main_hashset: &Vec<PathBuf>,
     lib_hashmap: &AHashMap<PathBuf, String>,
     files_to_compile: &AHashMap<PathBuf, Hash>,
     h_c_link: &AHashMap<PathBuf, AHashSet<PathBuf>>,
@@ -30,7 +31,12 @@ pub fn link(
         let mut need_to_be_link = false;
 
         for h_file in c_h_link[file].iter() {
-            find_h(project_config, h_file, &mut already_explored_h)?;
+            find_h(
+                project_path,
+                project_config,
+                h_file,
+                &mut already_explored_h,
+            )?;
         }
 
         for h_file in already_explored_h.iter() {
@@ -70,6 +76,7 @@ pub fn link(
 }
 
 fn find_h(
+    project_path: &Path,
     project_config: &ProjectConfig,
     h_file: &Path,
     already_explored_h: &mut AHashSet<PathBuf>,
@@ -78,10 +85,10 @@ fn find_h(
         already_explored_h.insert(h_file.to_path_buf());
 
         let code = read_to_string(h_file)?;
-        let includes = get_includes(h_file, &project_config.includes, &code);
+        let includes = get_includes(h_file, project_path, &project_config.includes, &code);
 
         for include in includes {
-            find_h(project_config, &include, already_explored_h)?;
+            find_h(project_path, project_config, &include, already_explored_h)?;
         }
     }
 

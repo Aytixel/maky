@@ -48,9 +48,10 @@ pub fn get_lib(code: &str) -> Option<String> {
 }
 
 pub fn scan_dir(
+    project_path: &Path,
     project_config: &ProjectConfig,
     dir_path: &Path,
-    main_hashset: &mut AHashSet<PathBuf>,
+    main_hashset: &mut Vec<PathBuf>,
     lib_hashmap: &mut AHashMap<PathBuf, String>,
     h_h_link: &mut AHashMap<PathBuf, AHashSet<PathBuf>>,
     h_c_link: &mut AHashMap<PathBuf, AHashSet<PathBuf>>,
@@ -71,13 +72,14 @@ pub fn scan_dir(
                             format!("{} : {}", path.to_string_lossy(), error),
                         )
                     })?;
-                    let includes = get_includes(&path, &project_config.includes, code);
+                    let includes =
+                        get_includes(&path, project_path, &project_config.includes, code);
 
                     if is_code_file(extension) {
                         c_h_link.insert(path.clone(), includes.clone());
 
                         if has_main(code, extension) {
-                            main_hashset.insert(path.clone());
+                            main_hashset.push(path.clone());
                         }
 
                         if let Some(lib_name) = get_lib(code) {
@@ -103,6 +105,7 @@ pub fn scan_dir(
                 }
             } else if path.is_dir() {
                 scan_dir(
+                    project_path,
                     project_config,
                     &path,
                     main_hashset,
@@ -121,7 +124,12 @@ pub fn scan_dir(
 
 const INCLUDE_PATTERN: &str = "#include";
 
-fn get_includes(path: &Path, include_path_vec: &Vec<PathBuf>, code: &str) -> AHashSet<PathBuf> {
+fn get_includes(
+    path: &Path,
+    project_path: &Path,
+    include_path_vec: &Vec<PathBuf>,
+    code: &str,
+) -> AHashSet<PathBuf> {
     let mut include_hashset = AHashSet::new();
     let parent_path = path.parent().unwrap_or(Path::new("./")).to_path_buf();
 
@@ -146,7 +154,7 @@ fn get_includes(path: &Path, include_path_vec: &Vec<PathBuf>, code: &str) -> AHa
             }
 
             for include_path in include_path_vec {
-                let path = include_path.join(path);
+                let path = project_path.join(include_path).join(path);
 
                 if path.is_file() {
                     include_hashset.insert(path.to_path_buf());

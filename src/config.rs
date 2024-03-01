@@ -125,12 +125,7 @@ impl ProjectConfig {
         AHashMap::new()
     }
 
-    fn merge_specific_config(
-        &mut self,
-        archs: AHashSet<&str>,
-        features: AHashSet<&str>,
-        oss: AHashSet<&str>,
-    ) {
+    fn merge_specific_config(&mut self) {
         let mut specific_config = SpecificConfig {
             compiler: None,
             binaries: None,
@@ -139,55 +134,59 @@ impl ProjectConfig {
             includes: None,
             libraries: None,
         };
+        let features = get_features();
+        let mut oss = vec![env::consts::OS];
 
-        for arch in archs {
-            if let Some(arch_specific_config) = self.arch_specific.get(arch) {
-                if let Some(specific_compiler) = arch_specific_config.compiler.clone() {
-                    if let Some(compiler) = &mut specific_config.compiler {
-                        *compiler = specific_compiler;
-                    } else {
-                        specific_config.compiler = Some(specific_compiler);
-                    }
+        if env::consts::OS != env::consts::FAMILY {
+            oss.push(env::consts::FAMILY);
+        }
+
+        if let Some(arch_specific_config) = self.arch_specific.get(env::consts::ARCH) {
+            if let Some(specific_compiler) = arch_specific_config.compiler.clone() {
+                if let Some(compiler) = &mut specific_config.compiler {
+                    *compiler = specific_compiler;
+                } else {
+                    specific_config.compiler = Some(specific_compiler);
                 }
+            }
 
-                if let Some(specific_binaries) = arch_specific_config.binaries.clone() {
-                    if let Some(binaries) = &mut specific_config.binaries {
-                        *binaries = specific_binaries;
-                    } else {
-                        specific_config.binaries = Some(specific_binaries);
-                    }
+            if let Some(specific_binaries) = arch_specific_config.binaries.clone() {
+                if let Some(binaries) = &mut specific_config.binaries {
+                    *binaries = specific_binaries;
+                } else {
+                    specific_config.binaries = Some(specific_binaries);
                 }
+            }
 
-                if let Some(specific_objects) = arch_specific_config.objects.clone() {
-                    if let Some(objects) = &mut specific_config.objects {
-                        *objects = specific_objects;
-                    } else {
-                        specific_config.objects = Some(specific_objects);
-                    }
+            if let Some(specific_objects) = arch_specific_config.objects.clone() {
+                if let Some(objects) = &mut specific_config.objects {
+                    *objects = specific_objects;
+                } else {
+                    specific_config.objects = Some(specific_objects);
                 }
+            }
 
-                if let Some(specific_sources) = arch_specific_config.sources.clone() {
-                    if let Some(sources) = &mut specific_config.sources {
-                        sources.extend(specific_sources);
-                    } else {
-                        specific_config.sources = Some(specific_sources);
-                    }
+            if let Some(specific_sources) = arch_specific_config.sources.clone() {
+                if let Some(sources) = &mut specific_config.sources {
+                    sources.extend(specific_sources);
+                } else {
+                    specific_config.sources = Some(specific_sources);
                 }
+            }
 
-                if let Some(specific_includes) = arch_specific_config.includes.clone() {
-                    if let Some(includes) = &mut specific_config.includes {
-                        includes.extend(specific_includes);
-                    } else {
-                        specific_config.includes = Some(specific_includes);
-                    }
+            if let Some(specific_includes) = arch_specific_config.includes.clone() {
+                if let Some(includes) = &mut specific_config.includes {
+                    includes.extend(specific_includes);
+                } else {
+                    specific_config.includes = Some(specific_includes);
                 }
+            }
 
-                if let Some(specific_libraries) = arch_specific_config.libraries.clone() {
-                    if let Some(libraries) = &mut specific_config.libraries {
-                        libraries.extend(specific_libraries);
-                    } else {
-                        specific_config.libraries = Some(specific_libraries);
-                    }
+            if let Some(specific_libraries) = arch_specific_config.libraries.clone() {
+                if let Some(libraries) = &mut specific_config.libraries {
+                    libraries.extend(specific_libraries);
+                } else {
+                    specific_config.libraries = Some(specific_libraries);
                 }
             }
         }
@@ -354,9 +353,6 @@ impl ProjectConfig {
             library_config.library = library;
             library_config.directories = directories;
             library_config.includes = includes;
-            library_config.library.dedup();
-            library_config.directories.dedup();
-            library_config.includes.dedup();
         }
     }
 }
@@ -365,15 +361,8 @@ impl LoadConfig for ProjectConfig {
     fn load(file_path: &Path) -> io::Result<Self> {
         let mut project_config: ProjectConfig = toml::from_str(&read_to_string(file_path)?)
             .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
-        let mut archs = AHashSet::new();
-        let mut oss = AHashSet::new();
 
-        archs.insert(env::consts::ARCH);
-
-        oss.insert(env::consts::OS);
-        oss.insert(env::consts::FAMILY);
-
-        project_config.merge_specific_config(archs, get_features(), oss);
+        project_config.merge_specific_config();
 
         let template_values = HashMap::from([
             ("os", env::consts::OS),
