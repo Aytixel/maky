@@ -26,7 +26,7 @@ pub fn run(
         BuildFlags {
             release,
             rebuild,
-            pretty: false,
+            pretty: true,
         },
     )?;
 

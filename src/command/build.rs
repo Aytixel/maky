@@ -99,7 +99,7 @@ pub fn build(config_file: String, flags: BuildFlags) -> io::Result<()> {
                 project_config.includes.push("/usr/include".into());
             }
 
-            dependencies(project_path, &project_config, &flags)?;
+            dependencies(project_path, &mut project_config, &flags)?;
 
             let mut hash_hashmap = if flags.rebuild {
                 for entry in read_dir(&objects_dir_path)? {

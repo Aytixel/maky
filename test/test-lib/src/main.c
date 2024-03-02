@@ -1,6 +1,6 @@
 #include <deps/lib/lib.h>
 
-//@import test
+//@import lib/test
 int main()
 {
 	hello();

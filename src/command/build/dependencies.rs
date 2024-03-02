@@ -6,6 +6,7 @@ use std::{
     process::{Command, Stdio},
 };
 
+use ahash::AHashMap;
 use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
@@ -13,8 +14,8 @@ use crossterm::{
 use kdam::{tqdm, BarExt, Column, RichProgress, Spinner};
 
 use crate::{
-    command::get_project_path,
-    config::{LoadConfig, ProjectConfig},
+    command::{add_mode_path, get_project_path},
+    config::{LibConfig, LoadConfig, ProjectConfig},
     file::scan_dir_dependency,
 };
 
@@ -22,7 +23,7 @@ use super::BuildFlags;
 
 pub fn dependencies(
     project_path: &Path,
-    project_config: &ProjectConfig,
+    project_config: &mut ProjectConfig,
     flags: &BuildFlags,
 ) -> io::Result<()> {
     let mut dependencies_progress_bar_option =
@@ -79,6 +80,7 @@ pub fn dependencies(
     }
 
     let mut errors = Vec::new();
+    let binaries_path = add_mode_path(&project_config.binaries, flags.release);
 
     for (dependency_name, dependency_path, mut command) in commands.into_iter() {
         if let Some(dependencies_progress_bar) = &mut dependencies_progress_bar_option {
@@ -116,6 +118,42 @@ pub fn dependencies(
                                     project_include_path
                                         .join(h_file.strip_prefix(&include_path).unwrap()),
                                 )?;
+                            }
+                        }
+                    }
+
+                    for entry in add_mode_path(
+                        &dependency_path.join(dependency_config.binaries),
+                        flags.release,
+                    )
+                    .read_dir()?
+                    {
+                        if let Ok(entry) = entry {
+                            let path = entry.path();
+
+                            if let Some(true) = path.file_name().map(|file_name| {
+                                file_name
+                                    .to_string_lossy()
+                                    .contains(env::consts::DLL_SUFFIX)
+                            }) {
+                                copy(
+                                    &path,
+                                    project_path
+                                        .join(binaries_path.join(path.file_name().unwrap())),
+                                )?;
+
+                                let lib_name = path.file_stem().unwrap().to_string_lossy();
+                                let lib_name = lib_name.strip_prefix("lib").unwrap_or(&lib_name);
+                                let lib_config = LibConfig {
+                                    library: vec![lib_name.to_string()],
+                                    directories: vec![binaries_path.clone()],
+                                    includes: Vec::new(),
+                                    pkg_config: AHashMap::new(),
+                                };
+
+                                project_config
+                                    .libraries
+                                    .insert(format!("{dependency_name}/{lib_name}"), lib_config);
                             }
                         }
                     }
