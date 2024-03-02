@@ -1,4 +1,4 @@
-#include <lib/lib.h>
+#include <deps/lib/lib.h>
 
 //@import test
 int main()

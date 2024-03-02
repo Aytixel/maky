@@ -119,7 +119,29 @@ pub fn scan_dir(
         }
     }
 
-    return Ok(());
+    Ok(())
+}
+
+pub fn scan_dir_dependency(dir_path: &Path) -> io::Result<Vec<PathBuf>> {
+    let mut h_files = Vec::new();
+
+    for entry in read_dir(dir_path)? {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+
+            if path.is_file() {
+                let extension = path.extension().unwrap_or_default();
+
+                if is_header_file(extension) {
+                    h_files.push(path);
+                }
+            } else if path.is_dir() {
+                h_files.extend(scan_dir_dependency(&path)?);
+            }
+        }
+    }
+
+    Ok(h_files)
 }
 
 const INCLUDE_PATTERN: &str = "#include";
