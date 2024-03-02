@@ -81,6 +81,7 @@ pub fn dependencies(
 
     let mut errors = Vec::new();
     let binaries_path = add_mode_path(&project_config.binaries, flags.release);
+    let project_binaries_path = project_path.join(&binaries_path);
 
     for (dependency_name, dependency_path, mut command) in commands.into_iter() {
         if let Some(dependencies_progress_bar) = &mut dependencies_progress_bar_option {
@@ -93,7 +94,7 @@ pub fn dependencies(
             .join(".maky/include/deps")
             .join(dependency_name);
 
-        remove_dir_all(project_path.join(".maky/include"))?;
+        remove_dir_all(project_path.join(".maky/include")).ok();
         create_dir_all(&project_include_path)?;
 
         if let Ok(exit_code) = command.wait() {
@@ -136,11 +137,8 @@ pub fn dependencies(
                                     .to_string_lossy()
                                     .contains(env::consts::DLL_SUFFIX)
                             }) {
-                                copy(
-                                    &path,
-                                    project_path
-                                        .join(binaries_path.join(path.file_name().unwrap())),
-                                )?;
+                                create_dir_all(&project_binaries_path)?;
+                                copy(&path, project_binaries_path.join(path.file_name().unwrap()))?;
 
                                 let lib_name = path.file_stem().unwrap().to_string_lossy();
                                 let lib_name = lib_name.strip_prefix("lib").unwrap_or(&lib_name);
