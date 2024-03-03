@@ -1,6 +1,6 @@
 use std::{
     env,
-    fs::{copy, create_dir_all, remove_dir_all},
+    fs::{create_dir_all, hard_link, remove_dir_all},
     io::{self, stderr, Read},
     path::Path,
     process::{Command, Stdio},
@@ -114,7 +114,7 @@ pub fn dependencies(
 
                         if include_path.is_dir() {
                             for h_file in scan_dir_dependency(&include_path)? {
-                                copy(
+                                hard_link(
                                     &h_file,
                                     project_include_path
                                         .join(h_file.strip_prefix(&include_path).unwrap()),
@@ -138,7 +138,10 @@ pub fn dependencies(
                                     .contains(env::consts::DLL_SUFFIX)
                             }) {
                                 create_dir_all(&project_binaries_path)?;
-                                copy(&path, project_binaries_path.join(path.file_name().unwrap()))?;
+                                hard_link(
+                                    &path,
+                                    project_binaries_path.join(path.file_name().unwrap()),
+                                )?;
 
                                 let lib_name = path.file_stem().unwrap().to_string_lossy();
                                 let lib_name = lib_name.strip_prefix("lib").unwrap_or(&lib_name);
