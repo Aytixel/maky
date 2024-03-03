@@ -54,6 +54,7 @@ pub fn dependencies(
             None
         };
 
+    let mut errors = Vec::new();
     let mut commands = Vec::new();
     let project_dependencies_path = project_path.join(".maky/dependencies");
 
@@ -63,36 +64,62 @@ pub fn dependencies(
         let dependency_path = match dependency_config {
             DependencyConfig::Local { path } => project_path.join(path),
             DependencyConfig::Git { git, branch } => {
+                let mut git_errors = Vec::new();
                 let git_url = GitUrl::parse(git)
                     .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
                 let project_dependency_path = project_dependencies_path.join(&git_url.name);
 
                 if !project_dependency_path.is_dir() {
-                    Command::new("git")
-                        .current_dir(&project_dependencies_path)
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .arg("clone")
-                        .arg(git)
-                        .status()?;
+                    git_errors.push(
+                        String::from_utf8_lossy(
+                            &Command::new("git")
+                                .current_dir(&project_dependencies_path)
+                                .stdout(Stdio::null())
+                                .stderr(Stdio::piped())
+                                .arg("clone")
+                                .arg(git)
+                                .output()?
+                                .stderr,
+                        )
+                        .to_string(),
+                    );
                 }
 
                 if let Some(branch) = branch {
-                    Command::new("git")
-                        .current_dir(&project_dependency_path)
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .arg("checkout")
-                        .arg(branch)
-                        .status()?;
+                    git_errors.push(
+                        String::from_utf8_lossy(
+                            &Command::new("git")
+                                .current_dir(&project_dependency_path)
+                                .stdout(Stdio::null())
+                                .stderr(Stdio::piped())
+                                .arg("checkout")
+                                .arg(branch)
+                                .output()?
+                                .stderr,
+                        )
+                        .to_string(),
+                    );
                 }
 
-                Command::new("git")
-                    .current_dir(&project_dependency_path)
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .arg("pull")
-                    .status()?;
+                git_errors.push(
+                    String::from_utf8_lossy(
+                        &Command::new("git")
+                            .current_dir(&project_dependency_path)
+                            .stdout(Stdio::null())
+                            .stderr(Stdio::piped())
+                            .arg("pull")
+                            .output()?
+                            .stderr,
+                    )
+                    .to_string(),
+                );
+
+                if !git_errors.is_empty() {
+                    errors.push((
+                        dependency_name.clone(),
+                        format!("{}", git_errors.join("\n")),
+                    ));
+                }
 
                 project_dependency_path
             }
@@ -119,7 +146,6 @@ pub fn dependencies(
         commands.push((dependency_name, dependency_path, command.spawn().unwrap()))
     }
 
-    let mut errors = Vec::new();
     let binaries_path = add_mode_path(&project_config.binaries, flags.release);
     let project_binaries_path = project_path.join(&binaries_path);
 
@@ -238,9 +264,8 @@ pub fn dependencies(
                     SetForegroundColor(Color::Red),
                     Print("Errors : ".bold()),
                     ResetColor,
-                    SetForegroundColor(Color::Cyan),
-                    Print(dependency_name.clone().bold()),
-                    ResetColor,
+                    Print(dependency_name),
+                    Print("\n\n")
                 )?;
 
                 eprintln!("{error}\n");
