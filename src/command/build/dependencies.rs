@@ -1,6 +1,6 @@
 use std::{
     env,
-    fs::{create_dir_all, hard_link, remove_dir_all},
+    fs::{create_dir_all, hard_link, remove_dir_all, remove_file},
     io::{self, stderr, Read},
     path::Path,
     process::{Command, Stdio},
@@ -12,10 +12,11 @@ use crossterm::{
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
 use kdam::{tqdm, BarExt, Column, RichProgress, Spinner};
+use parse_git_url::GitUrl;
 
 use crate::{
     command::{add_mode_path, get_project_path},
-    config::{LibConfig, LoadConfig, ProjectConfig},
+    config::{DependencyConfig, LibConfig, LoadConfig, ProjectConfig},
     file::scan_dir_dependency,
 };
 
@@ -54,9 +55,48 @@ pub fn dependencies(
         };
 
     let mut commands = Vec::new();
+    let project_dependencies_path = project_path.join(".maky/dependencies");
 
-    for (dependency_name, dependency_path) in project_config.dependencies.iter() {
-        let dependency_path = project_path.join(dependency_path);
+    create_dir_all(&project_dependencies_path)?;
+
+    for (dependency_name, dependency_config) in project_config.dependencies.iter() {
+        let dependency_path = match dependency_config {
+            DependencyConfig::Local { path } => project_path.join(path),
+            DependencyConfig::Git { git, branch } => {
+                let git_url = GitUrl::parse(git)
+                    .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
+                let project_dependency_path = project_dependencies_path.join(&git_url.name);
+
+                if !project_dependency_path.is_dir() {
+                    Command::new("git")
+                        .current_dir(&project_dependencies_path)
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .arg("clone")
+                        .arg(git)
+                        .status()?;
+                }
+
+                if let Some(branch) = branch {
+                    Command::new("git")
+                        .current_dir(&project_dependency_path)
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .arg("checkout")
+                        .arg(branch)
+                        .status()?;
+                }
+
+                Command::new("git")
+                    .current_dir(&project_dependency_path)
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .arg("pull")
+                    .status()?;
+
+                project_dependency_path
+            }
+        };
         let mut command = Command::new(env::current_exe().unwrap());
 
         command
@@ -83,6 +123,8 @@ pub fn dependencies(
     let binaries_path = add_mode_path(&project_config.binaries, flags.release);
     let project_binaries_path = project_path.join(&binaries_path);
 
+    remove_dir_all(project_path.join(".maky/include")).ok();
+
     for (dependency_name, dependency_path, mut command) in commands.into_iter() {
         if let Some(dependencies_progress_bar) = &mut dependencies_progress_bar_option {
             dependencies_progress_bar.columns[2] =
@@ -94,7 +136,6 @@ pub fn dependencies(
             .join(".maky/include/deps")
             .join(dependency_name);
 
-        remove_dir_all(project_path.join(".maky/include")).ok();
         create_dir_all(&project_include_path)?;
 
         if let Ok(exit_code) = command.wait() {
@@ -138,10 +179,11 @@ pub fn dependencies(
                                     .contains(env::consts::DLL_SUFFIX)
                             }) {
                                 create_dir_all(&project_binaries_path)?;
-                                hard_link(
-                                    &path,
-                                    project_binaries_path.join(path.file_name().unwrap()),
-                                )?;
+
+                                let link = project_binaries_path.join(path.file_name().unwrap());
+
+                                remove_file(&link).ok();
+                                hard_link(&path, link)?;
 
                                 let lib_name = path.file_stem().unwrap().to_string_lossy();
                                 let lib_name = lib_name.strip_prefix("lib").unwrap_or(&lib_name);

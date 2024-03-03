@@ -56,7 +56,7 @@ pub struct ProjectConfig {
 
     #[serde(default = "ProjectConfig::default_dependencies")]
     #[serde(alias = "deps")]
-    pub dependencies: AHashMap<String, PathBuf>,
+    pub dependencies: AHashMap<String, DependencyConfig>,
 
     #[serde(default = "ProjectConfig::default_hashmap")]
     #[serde(alias = "libs")]
@@ -117,7 +117,7 @@ impl ProjectConfig {
         Vec::new()
     }
 
-    fn default_dependencies() -> AHashMap<String, PathBuf> {
+    fn default_dependencies() -> AHashMap<String, DependencyConfig> {
         AHashMap::new()
     }
 
@@ -386,6 +386,13 @@ impl LoadConfig for ProjectConfig {
 
         Ok(project_config)
     }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
+pub enum DependencyConfig {
+    Local { path: PathBuf },
+    Git { git: String, branch: Option<String> },
 }
 
 #[serde_as]

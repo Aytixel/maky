@@ -13,6 +13,7 @@ serde = { version = "1.0.197", features = ["derive"] }
 serde_with = "3.6.1"
 toml = "0.8.10"
 clap = { version = "4.5.1", features = ["derive"] }
+parse-git-url = "0.5.1"
 blake3 = "1.5.0"
 crossterm = "0.27.0"
 kdam = { version = "0.5.1", features = ["rich", "spinner"] }

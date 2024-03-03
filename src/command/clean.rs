@@ -5,7 +5,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::config::{LoadConfig, ProjectConfig};
+use crate::config::{DependencyConfig, LoadConfig, ProjectConfig};
 
 use super::get_project_path;
 
@@ -14,7 +14,7 @@ pub fn clean(config_file: String) -> io::Result<()> {
 
     match ProjectConfig::load(project_config_path) {
         Ok(project_config) => {
-            remove_dir_all(project_path.join(".maky/include")).ok();
+            remove_dir_all(project_path.join(".maky")).ok();
             remove_dir_all(project_path.join(project_config.binaries)).ok();
             remove_dir_all(project_path.join(project_config.objects)).ok();
 
@@ -45,15 +45,13 @@ pub fn clean(config_file: String) -> io::Result<()> {
                 }
             }
 
-            /*
-                clean dependencies
-            */
+            for dependency_config in project_config.dependencies.values() {
+                let dependency_path = match dependency_config {
+                    DependencyConfig::Local { path } => project_path.join(path),
+                    DependencyConfig::Git { .. } => continue,
+                };
 
-            for dependency_path in project_config.dependencies.values() {
-                let dependency_path = project_path.join(dependency_path);
-                let mut command = Command::new(env::current_exe().unwrap());
-
-                command
+                Command::new(env::current_exe().unwrap())
                     .stdout(Stdio::null())
                     .stderr(Stdio::inherit())
                     .arg("clean")
