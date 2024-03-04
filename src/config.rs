@@ -392,7 +392,7 @@ impl LoadConfig for ProjectConfig {
 #[serde(untagged)]
 pub enum DependencyConfig {
     Local { path: PathBuf },
-    Git { git: String, branch: Option<String> },
+    Git { git: String, rev: Option<String> },
 }
 
 #[serde_as]

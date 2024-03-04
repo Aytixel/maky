@@ -11,6 +11,7 @@ use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
+use git2::Repository;
 use kdam::{tqdm, BarExt, Column, RichProgress, Spinner};
 use parse_git_url::GitUrl;
 
@@ -63,56 +64,57 @@ pub fn dependencies(
     for (dependency_name, dependency_config) in project_config.dependencies.iter() {
         let dependency_path = match dependency_config {
             DependencyConfig::Local { path } => project_path.join(path),
-            DependencyConfig::Git { git, branch } => {
+            DependencyConfig::Git { git, rev } => {
                 let mut git_errors = Vec::new();
                 let git_url = GitUrl::parse(git)
                     .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
                 let project_dependency_path = project_dependencies_path.join(&git_url.name);
 
                 if !project_dependency_path.is_dir() {
-                    git_errors.push(
-                        String::from_utf8_lossy(
-                            &Command::new("git")
-                                .current_dir(&project_dependencies_path)
-                                .stdout(Stdio::null())
-                                .stderr(Stdio::piped())
-                                .arg("clone")
-                                .arg(git)
-                                .output()?
-                                .stderr,
-                        )
-                        .to_string(),
-                    );
+                    if let Err(error) = Repository::clone_recurse(git, &project_dependency_path) {
+                        git_errors.push(error.to_string());
+                    }
                 }
 
-                if let Some(branch) = branch {
-                    git_errors.push(
-                        String::from_utf8_lossy(
-                            &Command::new("git")
-                                .current_dir(&project_dependency_path)
-                                .stdout(Stdio::null())
-                                .stderr(Stdio::piped())
-                                .arg("checkout")
-                                .arg(branch)
-                                .output()?
-                                .stderr,
-                        )
-                        .to_string(),
-                    );
-                }
+                match Repository::open(&project_dependency_path) {
+                    Ok(repository) => match repository.find_remote("origin") {
+                        Ok(mut remote) => {
+                            if let Err(error) = remote.fetch(&[] as &[&str], None, None) {
+                                git_errors.push(error.to_string())
+                            } else {
+                                let rev = rev.clone().unwrap_or(
+                                    remote
+                                        .default_branch()
+                                        .unwrap()
+                                        .as_str()
+                                        .unwrap()
+                                        .to_string(),
+                                );
 
-                git_errors.push(
-                    String::from_utf8_lossy(
-                        &Command::new("git")
-                            .current_dir(&project_dependency_path)
-                            .stdout(Stdio::null())
-                            .stderr(Stdio::piped())
-                            .arg("pull")
-                            .output()?
-                            .stderr,
-                    )
-                    .to_string(),
-                );
+                                match repository.revparse_ext(&rev) {
+                                    Ok((object, reference)) => {
+                                        if let Err(error) = repository.checkout_tree(&object, None)
+                                        {
+                                            git_errors.push(error.to_string())
+                                        } else {
+                                            if let Err(error) = match reference {
+                                                Some(reference) => {
+                                                    repository.set_head(reference.name().unwrap())
+                                                }
+                                                None => repository.set_head_detached(object.id()),
+                                            } {
+                                                git_errors.push(error.to_string())
+                                            }
+                                        }
+                                    }
+                                    Err(error) => git_errors.push(error.to_string()),
+                                }
+                            }
+                        }
+                        Err(error) => git_errors.push(error.to_string()),
+                    },
+                    Err(error) => git_errors.push(error.to_string()),
+                }
 
                 if !git_errors.is_empty() {
                     errors.push((
@@ -250,7 +252,7 @@ pub fn dependencies(
         let mut is_first = true;
 
         for (dependency_name, error) in errors.iter() {
-            let error = error.trim_end();
+            let error = error.trim();
 
             if !error.is_empty() {
                 if is_first {

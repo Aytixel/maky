@@ -1,3 +1,3 @@
 [dependencies]
 lib = { path = "../lib" }
-helloworld = { git = "https://github.com/Aytixel/maky-hello-world.git", branch = "master" }
+helloworld = { git = "https://github.com/Aytixel/maky-hello-world.git", rev = "master" }

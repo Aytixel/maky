@@ -2,8 +2,9 @@ use std::{
     fs::{create_dir, create_dir_all, write},
     io,
     path::{Path, PathBuf},
-    process::Command,
 };
+
+use git2::Repository;
 
 pub fn init(path: Option<PathBuf>) -> io::Result<()> {
     let project_path = path.unwrap_or(Path::new("./").to_path_buf());
@@ -11,11 +12,7 @@ pub fn init(path: Option<PathBuf>) -> io::Result<()> {
     if !project_path.join("Maky.toml").exists() {
         create_dir_all(&project_path).ok();
 
-        Command::new("git")
-            .arg("init")
-            .env("GIT_DIR", project_path.join(".git"))
-            .output()
-            .ok();
+        Repository::init(&project_path).ok();
 
         create_dir(project_path.join("src")).ok();
         write(project_path.join(".gitignore"), "/.maky\n/obj\n/bin").ok();
