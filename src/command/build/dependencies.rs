@@ -11,7 +11,7 @@ use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
-use git2::Repository;
+use git2::{Error, Repository};
 use kdam::{tqdm, BarExt, Column, RichProgress, Spinner};
 use parse_git_url::GitUrl;
 
@@ -76,44 +76,49 @@ pub fn dependencies(
                     }
                 }
 
-                match Repository::open(&project_dependency_path) {
-                    Ok(repository) => match repository.find_remote("origin") {
-                        Ok(mut remote) => {
-                            if let Err(error) = remote.fetch(&[] as &[&str], None, None) {
-                                git_errors.push(error.to_string())
-                            } else {
-                                let rev = rev.clone().unwrap_or(
-                                    remote
-                                        .default_branch()
-                                        .unwrap()
-                                        .as_str()
-                                        .unwrap()
-                                        .to_string(),
-                                );
+                fn pull(project_dependency_path: &Path, rev: &Option<String>) -> Result<(), Error> {
+                    let repository = Repository::open(&project_dependency_path)?;
+                    let mut remote = repository.find_remote("origin")?;
 
-                                match repository.revparse_ext(&rev) {
-                                    Ok((object, reference)) => {
-                                        if let Err(error) = repository.checkout_tree(&object, None)
-                                        {
-                                            git_errors.push(error.to_string())
-                                        } else {
-                                            if let Err(error) = match reference {
-                                                Some(reference) => {
-                                                    repository.set_head(reference.name().unwrap())
-                                                }
-                                                None => repository.set_head_detached(object.id()),
-                                            } {
-                                                git_errors.push(error.to_string())
-                                            }
-                                        }
-                                    }
-                                    Err(error) => git_errors.push(error.to_string()),
-                                }
+                    remote.fetch(&[] as &[&str], None, None)?;
+
+                    let rev = rev.clone().unwrap_or(
+                        remote
+                            .default_branch()
+                            .unwrap()
+                            .as_str()
+                            .unwrap()
+                            .to_string(),
+                    );
+                    let (object, reference) = repository.revparse_ext(&rev)?;
+
+                    repository.checkout_tree(&object, None)?;
+
+                    match reference {
+                        Some(mut reference) => {
+                            let fetch_head = repository.find_reference("FETCH_HEAD")?;
+                            let fetch_commit =
+                                repository.reference_to_annotated_commit(&fetch_head)?;
+                            let analysis = repository.merge_analysis(&[&fetch_commit])?;
+
+                            if analysis.0.is_up_to_date() {
+                                repository.set_head(reference.name().unwrap())
+                            } else if analysis.0.is_fast_forward() {
+                                reference.set_target(fetch_commit.id(), "Fast-Forward")?;
+                                repository.set_head(reference.name().unwrap())?;
+                                repository.checkout_head(Some(
+                                    git2::build::CheckoutBuilder::default().force(),
+                                ))
+                            } else {
+                                Err(Error::from_str("Fast-forward only!"))
                             }
                         }
-                        Err(error) => git_errors.push(error.to_string()),
-                    },
-                    Err(error) => git_errors.push(error.to_string()),
+                        None => repository.set_head_detached(object.id()),
+                    }
+                }
+
+                if let Err(error) = pull(&project_dependency_path, rev) {
+                    git_errors.push(error.to_string());
                 }
 
                 if !git_errors.is_empty() {
