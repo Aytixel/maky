@@ -1,16 +1,17 @@
 use std::{
     io::{self, stderr, Read},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::{Child, Command, Stdio},
 };
 
-use ahash::AHashMap;
 use blake3::Hash;
 use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
+use hashbrown::HashMap;
 use kdam::{tqdm, BarExt, Column, RichProgress, Spinner};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{command::add_mode_path, config::ProjectConfig};
 
@@ -19,8 +20,8 @@ use super::BuildFlags;
 pub fn compiling(
     project_path: &Path,
     project_config: &ProjectConfig,
-    files_to_compile: &AHashMap<PathBuf, Hash>,
-    new_hash_hashmap: &mut AHashMap<PathBuf, Hash>,
+    files_to_compile: &HashMap<PathBuf, Hash>,
+    new_hash_hashmap: &mut HashMap<PathBuf, Hash>,
     flags: &BuildFlags,
 ) -> io::Result<()> {
     let mut compile_progress_bar_option = if flags.pretty && files_to_compile.len() > 0 {
@@ -60,38 +61,39 @@ pub fn compiling(
         include_args
     };
 
-    let mut commands = Vec::new();
+    let commands = files_to_compile
+        .into_par_iter()
+        .map(|(file_path, file_hash)| {
+            let mut command = Command::new(&project_config.compiler);
 
-    for file in files_to_compile.iter() {
-        let mut command = Command::new(&project_config.compiler);
-
-        command
-            .current_dir(project_path)
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .arg("-fdiagnostics-color=always");
-
-        if !flags.release {
-            command.arg("-O0").arg("-g").arg("-Wall");
-        } else {
-            command.arg("-O2");
-        }
-
-        commands.push((
-            file.0,
             command
-                .args(&include_args)
-                .arg("-c")
-                .arg(file.0.strip_prefix(project_path).unwrap())
-                .arg("-o")
-                .arg(
-                    add_mode_path(&project_config.objects, flags.release)
-                        .join(file.1.to_hex().as_str()),
-                )
-                .spawn()
-                .unwrap(),
-        ));
-    }
+                .current_dir(project_path)
+                .stdout(Stdio::null())
+                .stderr(Stdio::piped())
+                .arg("-fdiagnostics-color=always");
+
+            if !flags.release {
+                command.arg("-O0").arg("-g").arg("-Wall");
+            } else {
+                command.arg("-O2");
+            }
+
+            (
+                file_path,
+                command
+                    .args(&include_args)
+                    .arg("-c")
+                    .arg(file_path.strip_prefix(project_path).unwrap())
+                    .arg("-o")
+                    .arg(
+                        add_mode_path(&project_config.objects, flags.release)
+                            .join(file_hash.to_hex().as_str()),
+                    )
+                    .spawn()
+                    .unwrap(),
+            )
+        })
+        .collect::<HashMap<&PathBuf, Child>>();
 
     let mut errors = Vec::new();
 

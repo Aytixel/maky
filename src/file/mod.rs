@@ -5,8 +5,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use ahash::{AHashMap, AHashSet};
 use blake3::{hash, Hash};
+use hashbrown::{HashMap, HashSet};
 use tree_sitter::{Language, Parser, Query, QueryCursor};
 
 use crate::config::ProjectConfig;
@@ -52,11 +52,11 @@ pub fn scan_dir(
     project_config: &ProjectConfig,
     dir_path: &Path,
     main_vec: &mut Vec<PathBuf>,
-    lib_hashmap: &mut AHashMap<PathBuf, String>,
-    h_h_link: &mut AHashMap<PathBuf, AHashSet<PathBuf>>,
-    h_c_link: &mut AHashMap<PathBuf, AHashSet<PathBuf>>,
-    c_h_link: &mut AHashMap<PathBuf, AHashSet<PathBuf>>,
-    hash_hashmap: &mut AHashMap<PathBuf, Hash>,
+    lib_hashmap: &mut HashMap<PathBuf, String>,
+    h_h_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
+    h_c_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
+    c_h_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
+    hash_hashmap: &mut HashMap<PathBuf, Hash>,
 ) -> io::Result<()> {
     for entry in read_dir(dir_path)? {
         if let Ok(entry) = entry {
@@ -93,12 +93,12 @@ pub fn scan_dir(
                         if is_code_file(extension) {
                             h_c_link
                                 .entry(include)
-                                .or_insert(AHashSet::new())
+                                .or_insert(HashSet::new())
                                 .insert(path.clone());
                         } else {
                             h_h_link
                                 .entry(include)
-                                .or_insert(AHashSet::new())
+                                .or_insert(HashSet::new())
                                 .insert(path.clone());
                         }
                     }
@@ -151,8 +151,8 @@ fn get_includes(
     project_path: &Path,
     include_path_vec: &Vec<PathBuf>,
     code: &str,
-) -> AHashSet<PathBuf> {
-    let mut include_hashset = AHashSet::new();
+) -> HashSet<PathBuf> {
+    let mut include_hashset = HashSet::new();
     let parent_path = path.parent().unwrap_or(Path::new("./")).to_path_buf();
 
     'main: for (index, _) in code.match_indices(INCLUDE_PATTERN) {

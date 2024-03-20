@@ -1,18 +1,17 @@
 use std::{
-    collections::HashMap,
-    env,
+    collections, env,
     fs::{read_to_string, write},
     io::{self, stderr},
     path::{Path, PathBuf},
     slice::IterMut,
 };
 
-use ahash::{AHashMap, AHashSet};
 use blake3::Hash;
 use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
+use hashbrown::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use serde_with::{formats::PreferOne, serde_as, OneOrMany};
 use string_template::Template;
@@ -56,23 +55,23 @@ pub struct ProjectConfig {
 
     #[serde(default = "ProjectConfig::default_dependencies")]
     #[serde(alias = "deps")]
-    pub dependencies: AHashMap<String, DependencyConfig>,
+    pub dependencies: HashMap<String, DependencyConfig>,
 
     #[serde(default = "ProjectConfig::default_hashmap")]
     #[serde(alias = "libs")]
-    pub libraries: AHashMap<String, LibConfig>,
+    pub libraries: HashMap<String, LibConfig>,
 
     #[serde(default = "ProjectConfig::default_hashmap")]
     #[serde(alias = "arch")]
-    pub arch_specific: AHashMap<String, SpecificConfig>,
+    pub arch_specific: HashMap<String, SpecificConfig>,
 
     #[serde(default = "ProjectConfig::default_hashmap")]
     #[serde(alias = "feat")]
-    pub feature_specific: AHashMap<String, SpecificConfig>,
+    pub feature_specific: HashMap<String, SpecificConfig>,
 
     #[serde(default = "ProjectConfig::default_hashmap")]
     #[serde(alias = "os")]
-    pub os_specific: AHashMap<String, SpecificConfig>,
+    pub os_specific: HashMap<String, SpecificConfig>,
 }
 
 impl ProjectConfig {
@@ -117,12 +116,12 @@ impl ProjectConfig {
         Vec::new()
     }
 
-    fn default_dependencies() -> AHashMap<String, DependencyConfig> {
-        AHashMap::new()
+    fn default_dependencies() -> HashMap<String, DependencyConfig> {
+        HashMap::new()
     }
 
-    fn default_hashmap<T>() -> AHashMap<String, T> {
-        AHashMap::new()
+    fn default_hashmap<T>() -> HashMap<String, T> {
+        HashMap::new()
     }
 
     fn merge_specific_config(&mut self) {
@@ -364,7 +363,7 @@ impl LoadConfig for ProjectConfig {
 
         project_config.merge_specific_config();
 
-        let template_values = HashMap::from([
+        let template_values = collections::HashMap::from([
             ("os", env::consts::OS),
             ("family", env::consts::FAMILY),
             ("arch", env::consts::ARCH),
@@ -416,7 +415,7 @@ pub struct SpecificConfig {
     pub includes: Option<Vec<PathBuf>>,
 
     #[serde(alias = "libs")]
-    pub libraries: Option<AHashMap<String, LibConfig>>,
+    pub libraries: Option<HashMap<String, LibConfig>>,
 }
 
 #[serde_as]
@@ -439,7 +438,7 @@ pub struct LibConfig {
 
     #[serde(default = "LibConfig::default_hashmap")]
     #[serde(alias = "pkg")]
-    pub pkg_config: AHashMap<String, String>,
+    pub pkg_config: HashMap<String, String>,
 }
 
 impl LibConfig {
@@ -447,15 +446,15 @@ impl LibConfig {
         Vec::new()
     }
 
-    fn default_hashmap<T>() -> AHashMap<String, T> {
-        AHashMap::new()
+    fn default_hashmap<T>() -> HashMap<String, T> {
+        HashMap::new()
     }
 }
 
-impl LoadConfig for AHashMap<PathBuf, Hash> {
+impl LoadConfig for HashMap<PathBuf, Hash> {
     fn load(project_path: &Path) -> io::Result<Self> {
         let hash_file = read_to_string(project_path.join(".maky/hash"))?;
-        let mut hash_hashmap = AHashMap::new();
+        let mut hash_hashmap = HashMap::new();
         let mut hash_path = Path::new("");
 
         for (index, line) in hash_file.lines().enumerate() {
@@ -472,7 +471,7 @@ impl LoadConfig for AHashMap<PathBuf, Hash> {
     }
 }
 
-impl SaveConfig for AHashMap<PathBuf, Hash> {
+impl SaveConfig for HashMap<PathBuf, Hash> {
     fn save(&self, project_path: &Path) -> io::Result<()> {
         let mut data = Vec::new();
 
@@ -496,8 +495,8 @@ impl SaveConfig for AHashMap<PathBuf, Hash> {
     }
 }
 
-fn get_features<'a>() -> AHashSet<&'a str> {
-    let mut features = AHashSet::new();
+fn get_features<'a>() -> HashSet<&'a str> {
+    let mut features = HashSet::new();
 
     if cfg!(target_feature = "adx") {
         features.insert("adx");

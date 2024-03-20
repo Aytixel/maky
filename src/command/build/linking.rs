@@ -3,16 +3,17 @@ use std::{
     fs::{create_dir_all, read_to_string},
     io::{self, stderr, Read},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::{Child, Command, Stdio},
 };
 
-use ahash::{AHashMap, AHashSet};
 use blake3::Hash;
 use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
+use hashbrown::{HashMap, HashSet};
 use kdam::{tqdm, BarExt, Column, RichProgress, Spinner};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{
     command::add_mode_path,
@@ -25,8 +26,8 @@ use super::BuildFlags;
 pub fn linking(
     project_path: &Path,
     project_config: &ProjectConfig,
-    files_to_link: &Vec<(PathBuf, Option<String>, AHashSet<PathBuf>)>,
-    mut new_hash_hashmap: AHashMap<PathBuf, Hash>,
+    files_to_link: &Vec<(PathBuf, Option<String>, HashSet<PathBuf>)>,
+    mut new_hash_hashmap: HashMap<PathBuf, Hash>,
     flags: &BuildFlags,
 ) -> io::Result<()> {
     let mut link_progress_bar_option = if flags.pretty && files_to_link.len() > 0 {
@@ -56,7 +57,7 @@ pub fn linking(
     };
 
     let libraries_args = {
-        let mut libraries_args = AHashMap::new();
+        let mut libraries_args = HashMap::new();
 
         for (library_name, lib_config) in project_config.libraries.iter() {
             let mut args = Vec::new();
@@ -100,104 +101,110 @@ pub fn linking(
         libraries_args
     };
 
-    let mut commands = Vec::new();
+    let commands = files_to_link
+        .into_par_iter()
+        .map(|(file, lib_name_option, file_to_link)| {
+            let mut command = Command::new(&project_config.compiler);
 
-    'file_to_link: for (file, lib_name_option, file_to_link) in files_to_link {
-        let mut command = Command::new(&project_config.compiler);
+            command
+                .current_dir(project_path)
+                .stdout(Stdio::null())
+                .stderr(Stdio::piped())
+                .arg("-fdiagnostics-color=always");
 
-        command
-            .current_dir(project_path)
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .arg("-fdiagnostics-color=always");
-
-        if !flags.release {
-            command.arg("-g").arg("-Wall");
-        } else {
-            command.arg("-s");
-        }
-
-        if lib_name_option.is_some() {
-            command.arg("--shared").arg("-fpic");
-        }
-
-        for c_file in file_to_link {
-            if let Some(hash) = new_hash_hashmap.get(c_file) {
-                command.arg(
-                    add_mode_path(&project_config.objects, flags.release)
-                        .join(hash.to_hex().as_str()),
-                );
+            if !flags.release {
+                command.arg("-g").arg("-Wall");
             } else {
-                continue 'file_to_link;
-            }
-        }
-
-        let imports = get_imports(&read_to_string(file)?);
-
-        for (library_name, args) in libraries_args.iter() {
-            if !imports.contains(library_name) {
-                continue;
+                command.arg("-s");
             }
 
-            command.args(args);
-        }
+            if lib_name_option.is_some() {
+                command.arg("--shared").arg("-fpic");
+            }
 
-        let output_path;
-        let mut output_file;
+            for c_file in file_to_link {
+                if let Some(hash) = new_hash_hashmap.get(c_file) {
+                    command.arg(
+                        add_mode_path(&project_config.objects, flags.release)
+                            .join(hash.to_hex().as_str()),
+                    );
+                } else {
+                    return Ok(None);
+                }
+            }
 
-        if let Some(lib_name) = lib_name_option {
-            output_path = add_mode_path(&project_config.binaries, flags.release);
-            output_file = output_path.join(
-                env::consts::FAMILY
-                    .eq("unix")
-                    .then_some("lib".to_string())
-                    .unwrap_or_default()
-                    + lib_name,
-            );
-            output_file.set_extension(env::consts::DLL_EXTENSION);
-        } else {
-            output_path = add_mode_path(&project_config.binaries, flags.release).join(
-                file.parent()
-                    .unwrap_or(Path::new("./"))
-                    .strip_prefix(project_path)
-                    .unwrap_or(Path::new("./")),
-            );
-            output_file = output_path.join(file.file_stem().unwrap());
-            output_file.set_extension(env::consts::EXE_EXTENSION);
-        }
+            let imports = get_imports(&read_to_string(file)?);
 
-        create_dir_all(project_path.join(output_path))?;
+            for (library_name, args) in libraries_args.iter() {
+                if !imports.contains(library_name) {
+                    continue;
+                }
 
-        commands.push((file, command.arg("-o").arg(output_file).spawn().unwrap()));
-    }
+                command.args(args);
+            }
+
+            let output_path;
+            let mut output_file;
+
+            if let Some(lib_name) = lib_name_option {
+                output_path = add_mode_path(&project_config.binaries, flags.release);
+                output_file = output_path.join(
+                    env::consts::FAMILY
+                        .eq("unix")
+                        .then_some("lib".to_string())
+                        .unwrap_or_default()
+                        + lib_name,
+                );
+                output_file.set_extension(env::consts::DLL_EXTENSION);
+            } else {
+                output_path = add_mode_path(&project_config.binaries, flags.release).join(
+                    file.parent()
+                        .unwrap_or(Path::new("./"))
+                        .strip_prefix(project_path)
+                        .unwrap_or(Path::new("./")),
+                );
+                output_file = output_path.join(file.file_stem().unwrap());
+                output_file.set_extension(env::consts::EXE_EXTENSION);
+            }
+
+            create_dir_all(project_path.join(output_path))?;
+
+            Ok(Some((
+                file,
+                command.arg("-o").arg(output_file).spawn().unwrap(),
+            )))
+        })
+        .collect::<Vec<io::Result<Option<(&PathBuf, Child)>>>>();
 
     let mut errors = Vec::new();
 
-    for (file, mut command) in commands.into_iter() {
-        if let Some(link_progress_bar) = &mut link_progress_bar_option {
-            link_progress_bar.columns[2] = Column::Text(
-                "[bold blue]".to_string()
-                    + &file
-                        .strip_prefix(project_path)
-                        .unwrap_or(file)
-                        .to_string_lossy(),
-            );
-            link_progress_bar.update(1)?;
-        }
+    for command in commands.into_iter() {
+        if let Some((file, mut command)) = command? {
+            if let Some(link_progress_bar) = &mut link_progress_bar_option {
+                link_progress_bar.columns[2] = Column::Text(
+                    "[bold blue]".to_string()
+                        + &file
+                            .strip_prefix(project_path)
+                            .unwrap_or(file)
+                            .to_string_lossy(),
+                );
+                link_progress_bar.update(1)?;
+            }
 
-        if let Ok(exit_code) = command.wait() {
-            if !exit_code.success() {
+            if let Ok(exit_code) = command.wait() {
+                if !exit_code.success() {
+                    new_hash_hashmap.remove(file);
+                }
+
+                let mut buffer = String::new();
+
+                if let Some(stderr) = command.stderr.as_mut() {
+                    stderr.read_to_string(&mut buffer)?;
+                    errors.push((file, buffer));
+                }
+            } else {
                 new_hash_hashmap.remove(file);
             }
-
-            let mut buffer = String::new();
-
-            if let Some(stderr) = command.stderr.as_mut() {
-                stderr.read_to_string(&mut buffer)?;
-                errors.push((file, buffer));
-            }
-        } else {
-            new_hash_hashmap.remove(file);
         }
     }
 

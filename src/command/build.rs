@@ -9,11 +9,11 @@ use std::{
     time::Instant,
 };
 
-use ahash::AHashMap;
 use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
+use hashbrown::HashMap;
 
 use crate::{
     config::{LoadConfig, ProjectConfig},
@@ -114,16 +114,16 @@ pub fn build(config_file: String, flags: BuildFlags) -> io::Result<()> {
                     }
                 }
 
-                AHashMap::new()
+                HashMap::new()
             } else {
-                AHashMap::load(project_path).unwrap_or_default()
+                HashMap::load(project_path).unwrap_or_default()
             };
-            let mut new_hash_hashmap = AHashMap::new();
+            let mut new_hash_hashmap = HashMap::new();
             let mut main_vec = Vec::new();
-            let mut lib_hashmap = AHashMap::new();
-            let mut h_h_link = AHashMap::new();
-            let mut h_c_link = AHashMap::new();
-            let mut c_h_link = AHashMap::new();
+            let mut lib_hashmap = HashMap::new();
+            let mut h_h_link = HashMap::new();
+            let mut h_c_link = HashMap::new();
+            let mut c_h_link = HashMap::new();
 
             for source in project_config.sources.iter() {
                 scan_dir(

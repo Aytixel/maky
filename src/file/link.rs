@@ -5,8 +5,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use ahash::{AHashMap, AHashSet};
 use blake3::Hash;
+use hashbrown::{HashMap, HashSet};
 use pretok::Pretokenizer;
 
 use crate::config::ProjectConfig;
@@ -17,17 +17,17 @@ pub fn link(
     project_path: &Path,
     project_config: &ProjectConfig,
     main_vec: &Vec<PathBuf>,
-    lib_hashmap: &AHashMap<PathBuf, String>,
-    files_to_compile: &AHashMap<PathBuf, Hash>,
-    h_c_link: &AHashMap<PathBuf, AHashSet<PathBuf>>,
-    c_h_link: &AHashMap<PathBuf, AHashSet<PathBuf>>,
-) -> io::Result<Vec<(PathBuf, Option<String>, AHashSet<PathBuf>)>> {
+    lib_hashmap: &HashMap<PathBuf, String>,
+    files_to_compile: &HashMap<PathBuf, Hash>,
+    h_c_link: &HashMap<PathBuf, HashSet<PathBuf>>,
+    c_h_link: &HashMap<PathBuf, HashSet<PathBuf>>,
+) -> io::Result<Vec<(PathBuf, Option<String>, HashSet<PathBuf>)>> {
     let h_c_link_filtered = filter_h_c_link(h_c_link)?;
     let mut files_to_link = Vec::new();
 
     let mut link_files = |file: &Path, lib_name_option: Option<String>| -> io::Result<()> {
-        let mut file_to_link = AHashSet::new();
-        let mut already_explored_h = AHashSet::new();
+        let mut file_to_link = HashSet::new();
+        let mut already_explored_h = HashSet::new();
         let mut need_to_be_link = false;
 
         for h_file in c_h_link[file].iter() {
@@ -79,7 +79,7 @@ fn find_h(
     project_path: &Path,
     project_config: &ProjectConfig,
     h_file: &Path,
-    already_explored_h: &mut AHashSet<PathBuf>,
+    already_explored_h: &mut HashSet<PathBuf>,
 ) -> io::Result<()> {
     if !already_explored_h.contains(h_file) {
         already_explored_h.insert(h_file.to_path_buf());
@@ -96,9 +96,9 @@ fn find_h(
 }
 
 fn filter_h_c_link(
-    h_c_link: &AHashMap<PathBuf, AHashSet<PathBuf>>,
-) -> io::Result<AHashMap<PathBuf, AHashSet<PathBuf>>> {
-    let mut link_filtered: AHashMap<PathBuf, AHashSet<PathBuf>> = AHashMap::new();
+    h_c_link: &HashMap<PathBuf, HashSet<PathBuf>>,
+) -> io::Result<HashMap<PathBuf, HashSet<PathBuf>>> {
+    let mut link_filtered: HashMap<PathBuf, HashSet<PathBuf>> = HashMap::new();
 
     for (h_file, c_files) in h_c_link.iter() {
         let h_code = read_to_string(h_file)?;
@@ -111,7 +111,7 @@ fn filter_h_c_link(
             if !c_prototypes.is_disjoint(&h_prototypes) {
                 link_filtered
                     .entry(h_file.to_path_buf())
-                    .or_insert(AHashSet::new())
+                    .or_insert(HashSet::new())
                     .insert(c_file.to_path_buf());
             }
         }
@@ -120,8 +120,8 @@ fn filter_h_c_link(
     Ok(link_filtered)
 }
 
-fn get_prototypes(code: &str) -> AHashSet<String> {
-    let mut function_prototype_hashset = AHashSet::new();
+fn get_prototypes(code: &str) -> HashSet<String> {
+    let mut function_prototype_hashset = HashSet::new();
     let mut function_prototype = String::new();
     let mut in_function = false;
 

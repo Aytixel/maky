@@ -2,18 +2,19 @@ use std::{
     env,
     fs::{create_dir_all, hard_link, remove_dir_all, remove_file},
     io::{self, stderr, Read},
-    path::Path,
-    process::{Command, Stdio},
+    path::{Path, PathBuf},
+    process::{Child, Command, Stdio},
 };
 
-use ahash::AHashMap;
 use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
 use git2::{Error, Repository};
+use hashbrown::HashMap;
 use kdam::{tqdm, BarExt, Column, RichProgress, Spinner};
 use parse_git_url::GitUrl;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
     command::{add_mode_path, get_project_path},
@@ -55,110 +56,126 @@ pub fn dependencies(
             None
         };
 
-    let mut errors = Vec::new();
-    let mut commands = Vec::new();
     let project_dependencies_path = project_path.join(".maky/dependencies");
 
     create_dir_all(&project_dependencies_path)?;
 
-    for (dependency_name, dependency_config) in project_config.dependencies.iter() {
-        let dependency_path = match dependency_config {
-            DependencyConfig::Local { path } => project_path.join(path),
-            DependencyConfig::Git { git, rev } => {
-                let mut git_errors = Vec::new();
-                let git_url = GitUrl::parse(git)
-                    .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
-                let project_dependency_path = project_dependencies_path.join(&git_url.name);
+    let commands = project_config
+        .dependencies
+        .par_iter()
+        .map(|(dependency_name, dependency_config)| {
+            let dependency_path = match dependency_config {
+                DependencyConfig::Local { path } => project_path.join(path),
+                DependencyConfig::Git { git, rev } => {
+                    let mut git_errors = Vec::new();
+                    let git_url = GitUrl::parse(git)
+                        .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
+                    let project_dependency_path = project_dependencies_path.join(&git_url.name);
 
-                if !project_dependency_path.is_dir() {
-                    if let Err(error) = Repository::clone_recurse(git, &project_dependency_path) {
+                    if !project_dependency_path.is_dir() {
+                        if let Err(error) = Repository::clone_recurse(git, &project_dependency_path)
+                        {
+                            git_errors.push(error.to_string());
+                        }
+                    }
+
+                    fn pull(
+                        project_dependency_path: &Path,
+                        rev: &Option<String>,
+                    ) -> Result<(), Error> {
+                        let repository = Repository::open(&project_dependency_path)?;
+                        let mut remote = repository.find_remote("origin")?;
+
+                        remote.fetch(&[] as &[&str], None, None)?;
+
+                        let rev = rev.clone().unwrap_or(
+                            remote
+                                .default_branch()
+                                .unwrap()
+                                .as_str()
+                                .unwrap()
+                                .to_string(),
+                        );
+                        let (object, reference) = repository.revparse_ext(&rev)?;
+
+                        repository.checkout_tree(&object, None)?;
+
+                        match reference {
+                            Some(mut reference) => {
+                                let fetch_head = repository.find_reference("FETCH_HEAD")?;
+                                let fetch_commit =
+                                    repository.reference_to_annotated_commit(&fetch_head)?;
+                                let analysis = repository.merge_analysis(&[&fetch_commit])?;
+
+                                if analysis.0.is_up_to_date() {
+                                    repository.set_head(reference.name().unwrap())
+                                } else if analysis.0.is_fast_forward() {
+                                    reference.set_target(fetch_commit.id(), "Fast-Forward")?;
+                                    repository.set_head(reference.name().unwrap())?;
+                                    repository.checkout_head(Some(
+                                        git2::build::CheckoutBuilder::default().force(),
+                                    ))
+                                } else {
+                                    Err(Error::from_str("Fast-forward only!"))
+                                }
+                            }
+                            None => repository.set_head_detached(object.id()),
+                        }
+                    }
+
+                    if let Err(error) = pull(&project_dependency_path, rev) {
                         git_errors.push(error.to_string());
                     }
-                }
 
-                fn pull(project_dependency_path: &Path, rev: &Option<String>) -> Result<(), Error> {
-                    let repository = Repository::open(&project_dependency_path)?;
-                    let mut remote = repository.find_remote("origin")?;
-
-                    remote.fetch(&[] as &[&str], None, None)?;
-
-                    let rev = rev.clone().unwrap_or(
-                        remote
-                            .default_branch()
-                            .unwrap()
-                            .as_str()
-                            .unwrap()
-                            .to_string(),
-                    );
-                    let (object, reference) = repository.revparse_ext(&rev)?;
-
-                    repository.checkout_tree(&object, None)?;
-
-                    match reference {
-                        Some(mut reference) => {
-                            let fetch_head = repository.find_reference("FETCH_HEAD")?;
-                            let fetch_commit =
-                                repository.reference_to_annotated_commit(&fetch_head)?;
-                            let analysis = repository.merge_analysis(&[&fetch_commit])?;
-
-                            if analysis.0.is_up_to_date() {
-                                repository.set_head(reference.name().unwrap())
-                            } else if analysis.0.is_fast_forward() {
-                                reference.set_target(fetch_commit.id(), "Fast-Forward")?;
-                                repository.set_head(reference.name().unwrap())?;
-                                repository.checkout_head(Some(
-                                    git2::build::CheckoutBuilder::default().force(),
-                                ))
-                            } else {
-                                Err(Error::from_str("Fast-forward only!"))
-                            }
-                        }
-                        None => repository.set_head_detached(object.id()),
+                    if !git_errors.is_empty() {
+                        return Ok(Err((
+                            dependency_name.clone(),
+                            format!("{}", git_errors.join("\n")),
+                        )));
                     }
-                }
 
-                if let Err(error) = pull(&project_dependency_path, rev) {
-                    git_errors.push(error.to_string());
+                    project_dependency_path
                 }
+            };
+            let mut command = Command::new(env::current_exe().unwrap());
 
-                if !git_errors.is_empty() {
-                    errors.push((
-                        dependency_name.clone(),
-                        format!("{}", git_errors.join("\n")),
-                    ));
-                }
+            command
+                .stdout(Stdio::null())
+                .stderr(Stdio::piped())
+                .arg("build")
+                .arg("-f")
+                .arg(&dependency_path)
+                .arg("--pretty")
+                .arg("false");
 
-                project_dependency_path
+            if flags.release {
+                command.arg("--release");
             }
-        };
-        let mut command = Command::new(env::current_exe().unwrap());
 
-        command
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .arg("build")
-            .arg("-f")
-            .arg(&dependency_path)
-            .arg("--pretty")
-            .arg("false");
+            if flags.rebuild {
+                command.arg("--rebuild");
+            }
 
-        if flags.release {
-            command.arg("--release");
-        }
+            Ok(Ok((
+                dependency_name,
+                dependency_path,
+                command.spawn().unwrap(),
+            )))
+        })
+        .collect::<Vec<io::Result<Result<(&String, PathBuf, Child), (String, String)>>>>();
 
-        if flags.rebuild {
-            command.arg("--rebuild");
-        }
-
-        commands.push((dependency_name, dependency_path, command.spawn().unwrap()))
-    }
-
+    let mut errors = Vec::new();
     let binaries_path = add_mode_path(&project_config.binaries, flags.release);
     let project_binaries_path = project_path.join(&binaries_path);
 
     remove_dir_all(project_path.join(".maky/include")).ok();
 
-    for (dependency_name, dependency_path, mut command) in commands.into_iter() {
+    for command in commands.into_iter() {
+        let (dependency_name, dependency_path, mut command) = match command? {
+            Ok(command) => command,
+            Err(_) => todo!(),
+        };
+
         if let Some(dependencies_progress_bar) = &mut dependencies_progress_bar_option {
             dependencies_progress_bar.columns[2] =
                 Column::Text("[bold blue]".to_string() + &dependency_name);
@@ -224,7 +241,7 @@ pub fn dependencies(
                                     library: vec![lib_name.to_string()],
                                     directories: vec![binaries_path.clone()],
                                     includes: Vec::new(),
-                                    pkg_config: AHashMap::new(),
+                                    pkg_config: HashMap::new(),
                                 };
 
                                 project_config
