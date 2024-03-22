@@ -1,7 +1,7 @@
 use std::{
     env,
     fs::{create_dir_all, read_to_string},
-    io::{self, stderr, Read},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
 };
@@ -29,6 +29,7 @@ pub fn linking(
     files_to_link: &Vec<(PathBuf, Option<String>, HashSet<PathBuf>)>,
     mut new_hash_hashmap: HashMap<PathBuf, Hash>,
     flags: &BuildFlags,
+    stderr: &mut impl Write,
 ) -> io::Result<()> {
     let mut link_progress_bar_option = if flags.pretty && files_to_link.len() > 0 {
         let mut link_progress_bar = RichProgress::new(
@@ -224,21 +225,21 @@ pub fn linking(
         for (file, error) in errors.iter() {
             if !error.is_empty() {
                 if is_first {
-                    eprintln!();
+                    writeln!(stderr)?;
 
                     is_first = false;
                 }
 
                 execute!(
-                    stderr(),
+                    stderr,
                     SetForegroundColor(Color::Red),
                     Print("Errors : ".bold()),
                     ResetColor,
                     Print(file.to_string_lossy()),
                     Print("\n"),
+                    Print(error),
+                    Print("\n"),
                 )?;
-
-                eprintln!("{error}");
             }
         }
     }

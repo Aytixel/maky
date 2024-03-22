@@ -1,9 +1,4 @@
-use std::{
-    env,
-    fs::remove_dir_all,
-    io,
-    process::{Command, Stdio},
-};
+use std::{fs::remove_dir_all, io};
 
 use crate::config::{DependencyConfig, LoadConfig, ProjectConfig};
 
@@ -46,18 +41,11 @@ pub fn clean(config_file: String) -> io::Result<()> {
             }
 
             for dependency_config in project_config.dependencies.values() {
-                let dependency_path = match dependency_config {
-                    DependencyConfig::Local { path } => project_path.join(path),
-                    DependencyConfig::Git { .. } => continue,
+                let DependencyConfig::Local { path } = dependency_config else {
+                    continue;
                 };
 
-                Command::new(env::current_exe().unwrap())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::inherit())
-                    .arg("clean")
-                    .arg("-f")
-                    .arg(&dependency_path)
-                    .status()?;
+                clean(project_path.join(path).to_string_lossy().to_string())?;
             }
 
             Ok(())

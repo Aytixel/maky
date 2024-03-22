@@ -4,7 +4,7 @@ mod file;
 mod pkg_config;
 
 use std::{
-    io::{self},
+    io::{self, stderr},
     path::PathBuf,
 };
 
@@ -90,11 +90,12 @@ fn main() -> io::Result<()> {
                 pretty,
             } => build(
                 config_file,
-                BuildFlags {
+                &BuildFlags {
                     release,
                     rebuild,
                     pretty,
                 },
+                &mut stderr(),
             )?,
             Commands::Run {
                 config_file,

@@ -4,7 +4,7 @@ mod linking;
 
 use std::{
     fs::{create_dir, create_dir_all, read_dir, remove_dir, remove_file},
-    io::{self, stdout},
+    io::{self, stdout, Write},
     path::Path,
     time::Instant,
 };
@@ -26,13 +26,14 @@ use self::linking::linking;
 
 use super::{add_mode_path, get_project_path};
 
+#[derive(Clone, Copy)]
 pub struct BuildFlags {
     pub release: bool,
     pub rebuild: bool,
     pub pretty: bool,
 }
 
-pub fn build(config_file: String, flags: BuildFlags) -> io::Result<()> {
+pub fn build(config_file: String, flags: &BuildFlags, stderr: &mut impl Write) -> io::Result<()> {
     let (project_path, project_config_path) = &get_project_path(&config_file);
     let time = Instant::now();
 
@@ -99,7 +100,7 @@ pub fn build(config_file: String, flags: BuildFlags) -> io::Result<()> {
                 project_config.includes.push("/usr/include".into());
             }
 
-            dependencies(project_path, &mut project_config, &flags)?;
+            dependencies(project_path, &mut project_config, flags, stderr)?;
 
             let mut hash_hashmap = if flags.rebuild {
                 for entry in read_dir(&objects_dir_path)? {
@@ -152,7 +153,8 @@ pub fn build(config_file: String, flags: BuildFlags) -> io::Result<()> {
                 &project_config,
                 &files_to_compile,
                 &mut new_hash_hashmap,
-                &flags,
+                flags,
+                stderr,
             )?;
 
             let files_to_link = link(
@@ -170,7 +172,8 @@ pub fn build(config_file: String, flags: BuildFlags) -> io::Result<()> {
                 &project_config,
                 &files_to_link,
                 new_hash_hashmap,
-                &flags,
+                flags,
+                stderr,
             )?;
 
             if flags.pretty {

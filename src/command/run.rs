@@ -1,6 +1,6 @@
 use std::{
     env,
-    io::{self, stdout},
+    io::{self, stderr, stdout},
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -23,11 +23,12 @@ pub fn run(
 ) -> io::Result<()> {
     build(
         config_file.clone(),
-        BuildFlags {
+        &BuildFlags {
             release,
             rebuild,
             pretty: true,
         },
+        &mut stderr(),
     )?;
 
     let (project_path, project_config_path) = &get_project_path(&config_file);

@@ -1,5 +1,5 @@
 use std::{
-    io::{self, stderr, Read},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
 };
@@ -23,6 +23,7 @@ pub fn compiling(
     files_to_compile: &HashMap<PathBuf, Hash>,
     new_hash_hashmap: &mut HashMap<PathBuf, Hash>,
     flags: &BuildFlags,
+    stderr: &mut impl Write,
 ) -> io::Result<()> {
     let mut compile_progress_bar_option = if flags.pretty && files_to_compile.len() > 0 {
         let mut compile_progress_bar = RichProgress::new(
@@ -139,21 +140,21 @@ pub fn compiling(
         for (file, error) in errors.iter() {
             if !error.is_empty() {
                 if is_first {
-                    eprintln!();
+                    writeln!(stderr)?;
 
                     is_first = false;
                 }
 
                 execute!(
-                    stderr(),
+                    stderr,
                     SetForegroundColor(Color::Red),
                     Print("Errors : ".bold()),
                     ResetColor,
                     Print(file.to_string_lossy()),
                     Print("\n\n"),
+                    Print(error),
+                    Print("\n")
                 )?;
-
-                eprintln!("{error}");
             }
         }
     }
