@@ -140,158 +140,67 @@ impl ProjectConfig {
             oss.push(env::consts::FAMILY);
         }
 
-        if let Some(arch_specific_config) = self.arch_specific.get(env::consts::ARCH) {
-            if let Some(specific_compiler) = arch_specific_config.compiler.clone() {
-                if let Some(compiler) = &mut specific_config.compiler {
-                    *compiler = specific_compiler;
-                } else {
-                    specific_config.compiler = Some(specific_compiler);
-                }
-            }
+        let mut inner_merge_specific_config =
+            |selected_specific_config: Option<&SpecificConfig>| {
+                if let Some(selected_specific_config) = selected_specific_config {
+                    if let Some(specific_compiler) = selected_specific_config.compiler.clone() {
+                        if let Some(compiler) = &mut specific_config.compiler {
+                            *compiler = specific_compiler;
+                        } else {
+                            specific_config.compiler = Some(specific_compiler);
+                        }
+                    }
 
-            if let Some(specific_binaries) = arch_specific_config.binaries.clone() {
-                if let Some(binaries) = &mut specific_config.binaries {
-                    *binaries = specific_binaries;
-                } else {
-                    specific_config.binaries = Some(specific_binaries);
-                }
-            }
+                    if let Some(specific_binaries) = selected_specific_config.binaries.clone() {
+                        if let Some(binaries) = &mut specific_config.binaries {
+                            *binaries = specific_binaries;
+                        } else {
+                            specific_config.binaries = Some(specific_binaries);
+                        }
+                    }
 
-            if let Some(specific_objects) = arch_specific_config.objects.clone() {
-                if let Some(objects) = &mut specific_config.objects {
-                    *objects = specific_objects;
-                } else {
-                    specific_config.objects = Some(specific_objects);
-                }
-            }
+                    if let Some(specific_objects) = selected_specific_config.objects.clone() {
+                        if let Some(objects) = &mut specific_config.objects {
+                            *objects = specific_objects;
+                        } else {
+                            specific_config.objects = Some(specific_objects);
+                        }
+                    }
 
-            if let Some(specific_sources) = arch_specific_config.sources.clone() {
-                if let Some(sources) = &mut specific_config.sources {
-                    sources.extend(specific_sources);
-                } else {
-                    specific_config.sources = Some(specific_sources);
-                }
-            }
+                    if let Some(specific_sources) = selected_specific_config.sources.clone() {
+                        if let Some(sources) = &mut specific_config.sources {
+                            sources.extend(specific_sources);
+                        } else {
+                            specific_config.sources = Some(specific_sources);
+                        }
+                    }
 
-            if let Some(specific_includes) = arch_specific_config.includes.clone() {
-                if let Some(includes) = &mut specific_config.includes {
-                    includes.extend(specific_includes);
-                } else {
-                    specific_config.includes = Some(specific_includes);
-                }
-            }
+                    if let Some(specific_includes) = selected_specific_config.includes.clone() {
+                        if let Some(includes) = &mut specific_config.includes {
+                            includes.extend(specific_includes);
+                        } else {
+                            specific_config.includes = Some(specific_includes);
+                        }
+                    }
 
-            if let Some(specific_libraries) = arch_specific_config.libraries.clone() {
-                if let Some(libraries) = &mut specific_config.libraries {
-                    libraries.extend(specific_libraries);
-                } else {
-                    specific_config.libraries = Some(specific_libraries);
+                    if let Some(specific_libraries) = selected_specific_config.libraries.clone() {
+                        if let Some(libraries) = &mut specific_config.libraries {
+                            libraries.extend(specific_libraries);
+                        } else {
+                            specific_config.libraries = Some(specific_libraries);
+                        }
+                    }
                 }
-            }
-        }
+            };
+
+        inner_merge_specific_config(self.arch_specific.get(env::consts::ARCH));
 
         for feature in features {
-            if let Some(feature_specific_config) = self.feature_specific.get(feature) {
-                if let Some(specific_compiler) = feature_specific_config.compiler.clone() {
-                    if let Some(compiler) = &mut specific_config.compiler {
-                        *compiler = specific_compiler;
-                    } else {
-                        specific_config.compiler = Some(specific_compiler);
-                    }
-                }
-
-                if let Some(specific_binaries) = feature_specific_config.binaries.clone() {
-                    if let Some(binaries) = &mut specific_config.binaries {
-                        *binaries = specific_binaries;
-                    } else {
-                        specific_config.binaries = Some(specific_binaries);
-                    }
-                }
-
-                if let Some(specific_objects) = feature_specific_config.objects.clone() {
-                    if let Some(objects) = &mut specific_config.objects {
-                        *objects = specific_objects;
-                    } else {
-                        specific_config.objects = Some(specific_objects);
-                    }
-                }
-
-                if let Some(specific_sources) = feature_specific_config.sources.clone() {
-                    if let Some(sources) = &mut specific_config.sources {
-                        sources.extend(specific_sources);
-                    } else {
-                        specific_config.sources = Some(specific_sources);
-                    }
-                }
-
-                if let Some(specific_includes) = feature_specific_config.includes.clone() {
-                    if let Some(includes) = &mut specific_config.includes {
-                        includes.extend(specific_includes);
-                    } else {
-                        specific_config.includes = Some(specific_includes);
-                    }
-                }
-
-                if let Some(specific_libraries) = feature_specific_config.libraries.clone() {
-                    if let Some(libraries) = &mut specific_config.libraries {
-                        libraries.extend(specific_libraries);
-                    } else {
-                        specific_config.libraries = Some(specific_libraries);
-                    }
-                }
-            }
+            inner_merge_specific_config(self.feature_specific.get(feature));
         }
 
         for os in oss {
-            if let Some(os_specific_config) = self.os_specific.get(os) {
-                if let Some(specific_compiler) = os_specific_config.compiler.clone() {
-                    if let Some(compiler) = &mut specific_config.compiler {
-                        *compiler = specific_compiler;
-                    } else {
-                        specific_config.compiler = Some(specific_compiler);
-                    }
-                }
-
-                if let Some(specific_binaries) = os_specific_config.binaries.clone() {
-                    if let Some(binaries) = &mut specific_config.binaries {
-                        *binaries = specific_binaries;
-                    } else {
-                        specific_config.binaries = Some(specific_binaries);
-                    }
-                }
-
-                if let Some(specific_objects) = os_specific_config.objects.clone() {
-                    if let Some(objects) = &mut specific_config.objects {
-                        *objects = specific_objects;
-                    } else {
-                        specific_config.objects = Some(specific_objects);
-                    }
-                }
-
-                if let Some(specific_sources) = os_specific_config.sources.clone() {
-                    if let Some(sources) = &mut specific_config.sources {
-                        sources.extend(specific_sources);
-                    } else {
-                        specific_config.sources = Some(specific_sources);
-                    }
-                }
-
-                if let Some(specific_includes) = os_specific_config.includes.clone() {
-                    if let Some(includes) = &mut specific_config.includes {
-                        includes.extend(specific_includes);
-                    } else {
-                        specific_config.includes = Some(specific_includes);
-                    }
-                }
-
-                if let Some(specific_libraries) = os_specific_config.libraries.clone() {
-                    if let Some(libraries) = &mut specific_config.libraries {
-                        libraries.extend(specific_libraries);
-                    } else {
-                        specific_config.libraries = Some(specific_libraries);
-                    }
-                }
-            }
+            inner_merge_specific_config(self.os_specific.get(os));
         }
 
         if let Some(specific_compiler) = specific_config.compiler {
