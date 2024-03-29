@@ -1,6 +1,6 @@
 use std::{
     env,
-    fs::{create_dir_all, read_to_string},
+    fs::create_dir_all,
     io::{self, Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -18,7 +18,6 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use crate::{
     command::add_mode_path,
     config::{ProjectConfig, SaveConfig},
-    file::get_imports,
 };
 
 use super::BuildFlags;
@@ -26,6 +25,7 @@ use super::BuildFlags;
 pub fn linking(
     project_path: &Path,
     project_config: &ProjectConfig,
+    import_hashmap: &HashMap<PathBuf, Vec<String>>,
     files_to_link: &Vec<(PathBuf, Option<String>, HashSet<PathBuf>)>,
     mut new_hash_hashmap: HashMap<PathBuf, Hash>,
     flags: &BuildFlags,
@@ -134,14 +134,14 @@ pub fn linking(
                 }
             }
 
-            let imports = get_imports(&read_to_string(file)?);
+            if let Some(imports) = import_hashmap.get(file) {
+                for (library_name, args) in libraries_args.iter() {
+                    if !imports.contains(library_name) {
+                        continue;
+                    }
 
-            for (library_name, args) in libraries_args.iter() {
-                if !imports.contains(library_name) {
-                    continue;
+                    command.args(args);
                 }
-
-                command.args(args);
             }
 
             let output_path;

@@ -13,7 +13,7 @@ use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 
 use crate::{
     config::{LoadConfig, ProjectConfig},
@@ -120,8 +120,9 @@ pub fn build(config_file: String, flags: &BuildFlags, stderr: &mut impl Write) -
                 HashMap::load(project_path).unwrap_or_default()
             };
             let mut new_hash_hashmap = HashMap::new();
-            let mut main_vec = Vec::new();
+            let mut main_hashset = HashSet::new();
             let mut lib_hashmap = HashMap::new();
+            let mut import_hashmap = HashMap::new();
             let mut h_h_link = HashMap::new();
             let mut h_c_link = HashMap::new();
             let mut c_h_link = HashMap::new();
@@ -131,8 +132,9 @@ pub fn build(config_file: String, flags: &BuildFlags, stderr: &mut impl Write) -
                     project_path,
                     &project_config,
                     &project_path.join(source),
-                    &mut main_vec,
+                    &mut main_hashset,
                     &mut lib_hashmap,
+                    &mut import_hashmap,
                     &mut h_h_link,
                     &mut h_c_link,
                     &mut c_h_link,
@@ -160,7 +162,7 @@ pub fn build(config_file: String, flags: &BuildFlags, stderr: &mut impl Write) -
             let files_to_link = link(
                 project_path,
                 &project_config,
-                &main_vec,
+                &main_hashset,
                 &lib_hashmap,
                 &files_to_compile,
                 &h_c_link,
@@ -170,6 +172,7 @@ pub fn build(config_file: String, flags: &BuildFlags, stderr: &mut impl Write) -
             linking(
                 project_path,
                 &project_config,
+                &import_hashmap,
                 &files_to_link,
                 new_hash_hashmap,
                 flags,

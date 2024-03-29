@@ -2,6 +2,7 @@
 #include <deps/helloworld/lib.h>
 
 //@import lib/test, helloworld/helloworld
+//@main
 int main()
 {
 	hello();

@@ -5,54 +5,29 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use aho_corasick::AhoCorasick;
 use blake3::{hash, Hash};
 use hashbrown::{HashMap, HashSet};
-use tree_sitter::{Language, Parser, Query, QueryCursor};
+use lazy_static::lazy_static;
 
 use crate::config::ProjectConfig;
 
 pub mod compile;
 pub mod link;
 
-const IMPORT_PATTERN: &str = "//@import ";
-
-pub fn get_imports(code: &str) -> Vec<String> {
-    if let Some(index) = code.find(IMPORT_PATTERN) {
-        let index = index + IMPORT_PATTERN.len();
-
-        return code[index..index + code[index..].find("\n").expect("No end of line found")]
-            .trim()
-            .split(",")
-            .map(str::trim)
-            .map(str::to_string)
-            .collect::<Vec<String>>();
-    }
-
-    return Vec::new();
-}
-
-const LIB_PATTERN: &str = "//@lib ";
-
-pub fn get_lib(code: &str) -> Option<String> {
-    if let Some(index) = code.find(LIB_PATTERN) {
-        let index = index + LIB_PATTERN.len();
-
-        return Some(
-            code[index..index + code[index..].find("\n").expect("No end of line found")]
-                .trim()
-                .to_string(),
-        );
-    }
-
-    return None;
+lazy_static! {
+    static ref PATTERN_MATCHER: AhoCorasick =
+        AhoCorasick::new(&["//@main", "//@lib ", "//@import "])
+            .expect("Failed to initialize AhoCorasick pattern matcher");
 }
 
 pub fn scan_dir(
     project_path: &Path,
     project_config: &ProjectConfig,
     dir_path: &Path,
-    main_vec: &mut Vec<PathBuf>,
+    main_hashset: &mut HashSet<PathBuf>,
     lib_hashmap: &mut HashMap<PathBuf, String>,
+    import_hashmap: &mut HashMap<PathBuf, Vec<String>>,
     h_h_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
     h_c_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
     c_h_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
@@ -78,12 +53,39 @@ pub fn scan_dir(
                     if is_code_file(extension) {
                         c_h_link.insert(path.clone(), includes.clone());
 
-                        if has_main(code, extension) {
-                            main_vec.push(path.clone());
-                        }
+                        for match_ in PATTERN_MATCHER.find_iter(code) {
+                            match match_.pattern().as_usize() {
+                                0 => {
+                                    main_hashset.insert(path.clone());
+                                }
+                                1 => {
+                                    if let Some(lib_name) = code[match_.end()..]
+                                        .lines()
+                                        .next()
+                                        .map(|line| line.trim().to_string())
+                                    {
+                                        lib_hashmap.insert(path.clone(), lib_name);
+                                    }
+                                }
+                                2 => {
+                                    if let Some(line) = code[match_.end()..].lines().next() {
+                                        let imports = line
+                                            .trim()
+                                            .split(",")
+                                            .map(str::trim)
+                                            .map(str::to_string)
+                                            .collect::<Vec<String>>();
 
-                        if let Some(lib_name) = get_lib(code) {
-                            lib_hashmap.insert(path.clone(), lib_name);
+                                        import_hashmap
+                                            .entry(path.clone())
+                                            .and_modify(|imports_| {
+                                                imports_.extend_from_slice(&imports)
+                                            })
+                                            .or_insert(imports);
+                                    }
+                                }
+                                _ => {}
+                            }
                         }
                     }
 
@@ -108,8 +110,9 @@ pub fn scan_dir(
                     project_path,
                     project_config,
                     &path,
-                    main_vec,
+                    main_hashset,
                     lib_hashmap,
+                    import_hashmap,
                     h_h_link,
                     h_c_link,
                     c_h_link,
@@ -192,39 +195,6 @@ fn get_includes(
     include_hashset
 }
 
-fn has_main(code: &str, extension: &OsStr) -> bool {
-    let language = get_language(extension).expect("Unknown file extension");
-    let tree = {
-        let mut parser = Parser::new();
-
-        parser
-            .set_language(language)
-            .expect("Error loading parser grammar");
-        parser.parse(code, None).expect("Error parsing file")
-    };
-    let query = Query::new(
-        language,
-        r#"
-        (function_declarator
-            declarator: (identifier) @name
-            (#eq? @name "main")
-        )
-        "#,
-    )
-    .expect("Error building parser query");
-    let mut query_cursor = QueryCursor::new();
-
-    if query_cursor
-        .matches(&query, tree.root_node(), code.as_bytes())
-        .next()
-        .is_some()
-    {
-        return true;
-    }
-
-    false
-}
-
 fn is_code_file(extension: &OsStr) -> bool {
     extension == "c"
         || extension == "cc"
@@ -239,14 +209,4 @@ fn is_header_file(extension: &OsStr) -> bool {
         || extension == "hpp"
         || extension == "hxx"
         || extension == "h++"
-}
-
-fn get_language(extension: &OsStr) -> Option<Language> {
-    match extension.to_str().unwrap_or_default() {
-        "c" | "h" => Some(tree_sitter_c::language()),
-        "cc" | "cpp" | "cxx" | "c++" | "hh" | "hpp" | "hxx" | "h++" => {
-            Some(tree_sitter_cpp::language())
-        }
-        _ => None,
-    }
 }

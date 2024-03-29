@@ -7,20 +7,19 @@ authors = ["Aytixel"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rayon = "1.9.0"
+rayon = "1.10.0"
 string_template = "0.2.1"
+aho-corasick = "1.1.3"
+lazy_static = "1.4.0"
 pretok = "0.1.0"
 serde = { version = "1.0.197", features = ["derive"] }
 serde_with = "3.7.0"
 toml = "0.8.12"
-clap = { version = "4.5.3", features = ["derive"] }
+clap = { version = "4.5.4", features = ["derive"] }
 parse-git-url = "0.5.1"
 blake3 = "1.5.1"
 crossterm = "0.27.0"
 kdam = { version = "0.5.1", features = ["rich", "spinner"] }
 hashbrown = { version = "0.14.3", features = ["serde", "rayon"] }
-tree-sitter = "0.20.10"
-tree-sitter-c = "0.20.8"
-tree-sitter-cpp = "0.20.5"
 pkg-config = "0.3.30"
 git2 = "0.18.3"

@@ -16,7 +16,7 @@ use super::get_includes;
 pub fn link(
     project_path: &Path,
     project_config: &ProjectConfig,
-    main_vec: &Vec<PathBuf>,
+    main_hashset: &HashSet<PathBuf>,
     lib_hashmap: &HashMap<PathBuf, String>,
     files_to_compile: &HashMap<PathBuf, Hash>,
     h_c_link: &HashMap<PathBuf, HashSet<PathBuf>>,
@@ -64,7 +64,7 @@ pub fn link(
         Ok(())
     };
 
-    for main_file in main_vec.iter() {
+    for main_file in main_hashset {
         link_files(main_file, None)?;
     }
 
@@ -120,25 +120,30 @@ fn filter_h_c_link(
     Ok(link_filtered)
 }
 
+enum DeclarationType {
+    Function,
+    Class,
+    Unknown,
+}
+
 fn get_prototypes(code: &str) -> HashSet<String> {
-    let mut function_prototype_hashset = HashSet::new();
-    let mut function_prototype = String::new();
-    let mut in_function = false;
+    let mut prototype_hashset = HashSet::new();
+    let mut declaration_type = DeclarationType::Unknown;
+    let mut prototype = String::new();
 
     for pretoken in Pretokenizer::new(code) {
-        match pretoken.s {
-            "extern" | "inline" | "static" => {
-                in_function = true;
-            }
-            _ => {
-                if in_function {
+        declaration_type = match pretoken.s {
+            "extern" | "inline" | "static" => DeclarationType::Function,
+            "class" => DeclarationType::Class,
+            _ => match declaration_type {
+                DeclarationType::Function => {
                     if !pretoken.s.starts_with('{') {
-                        function_prototype += " ";
+                        prototype += " ";
 
                         if pretoken.s.ends_with(';') {
-                            function_prototype += &pretoken.s[..pretoken.s.len() - 1];
+                            prototype += &pretoken.s[..pretoken.s.len() - 1];
                         } else {
-                            function_prototype += pretoken.s;
+                            prototype += pretoken.s;
                         }
                     }
 
@@ -146,7 +151,7 @@ fn get_prototypes(code: &str) -> HashSet<String> {
                         let mut formatted_function_prototype = String::new();
                         let mut last_char = ' ';
 
-                        for char in function_prototype.chars() {
+                        for char in prototype.chars() {
                             match char {
                                 ' ' | '\t' | '\n' | '\r' => {
                                     if last_char != ' ' {
@@ -175,14 +180,24 @@ fn get_prototypes(code: &str) -> HashSet<String> {
                                 }
                             }
                         }
-                        function_prototype_hashset.insert(formatted_function_prototype);
-                        function_prototype = String::new();
-                        in_function = false;
+
+                        prototype_hashset.insert(formatted_function_prototype);
+                        prototype.clear();
+
+                        DeclarationType::Unknown
+                    } else {
+                        DeclarationType::Function
                     }
                 }
-            }
+                DeclarationType::Class => {
+                    prototype_hashset.insert(pretoken.s.to_string());
+
+                    DeclarationType::Unknown
+                }
+                DeclarationType::Unknown => DeclarationType::Unknown,
+            },
         }
     }
 
-    function_prototype_hashset
+    prototype_hashset
 }
