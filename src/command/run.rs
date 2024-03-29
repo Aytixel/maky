@@ -1,7 +1,7 @@
 use std::{
     env,
     io::{self, stderr, stdout},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Command, Stdio},
 };
 
@@ -12,7 +12,7 @@ use crossterm::{
 
 use crate::config::{LoadConfig, ProjectConfig};
 
-use super::{build, get_project_path, BuildFlags};
+use super::{add_mode_path, build, get_project_path, BuildFlags};
 
 pub fn run(
     config_file: String,
@@ -35,14 +35,7 @@ pub fn run(
 
     match ProjectConfig::load(project_config_path) {
         Ok(project_config) => {
-            let mut output_file = project_config
-                .binaries
-                .join(if release {
-                    Path::new("release")
-                } else {
-                    Path::new("debug")
-                })
-                .join(file);
+            let mut output_file = add_mode_path(&project_config.binaries, release).join(file);
 
             output_file.set_extension(env::consts::EXE_EXTENSION);
 

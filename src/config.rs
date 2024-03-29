@@ -195,12 +195,16 @@ impl ProjectConfig {
 
         inner_merge_specific_config(self.arch_specific.get(env::consts::ARCH));
 
-        for feature in features {
-            inner_merge_specific_config(self.feature_specific.get(feature));
+        for feature in self.feature_specific.keys() {
+            if features.contains(feature.as_str()) {
+                inner_merge_specific_config(self.feature_specific.get(feature));
+            }
         }
 
-        for os in oss {
-            inner_merge_specific_config(self.os_specific.get(os));
+        for os in self.os_specific.keys() {
+            if oss.contains(&os.as_str()) {
+                inner_merge_specific_config(self.os_specific.get(os));
+            }
         }
 
         if let Some(specific_compiler) = specific_config.compiler {
@@ -404,7 +408,7 @@ impl SaveConfig for HashMap<PathBuf, Hash> {
     }
 }
 
-fn get_features<'a>() -> HashSet<&'a str> {
+fn get_features() -> HashSet<&'static str> {
     let mut features = HashSet::new();
 
     if cfg!(target_feature = "adx") {

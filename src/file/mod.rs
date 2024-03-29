@@ -157,8 +157,11 @@ fn get_includes(
 
     'main: for (index, _) in code.match_indices(INCLUDE_PATTERN) {
         let index = index + INCLUDE_PATTERN.len();
-        let code =
-            code[index..index + code[index..].find("\n").expect("No end of line found")].trim();
+        let code = code[index..]
+            .lines()
+            .next()
+            .expect("Unexpected end of file")
+            .trim();
 
         if code.len() > 2 {
             let path = Path::new(&code[1..code.len() - 1]);

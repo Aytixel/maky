@@ -11,11 +11,7 @@ pub use init::*;
 pub use run::*;
 
 pub fn add_mode_path(path: &Path, release: bool) -> PathBuf {
-    path.join(if release {
-        Path::new("release")
-    } else {
-        Path::new("debug")
-    })
+    path.join(if release { "release" } else { "debug" })
 }
 
 pub fn get_project_path(config_file: &str) -> (PathBuf, PathBuf) {
