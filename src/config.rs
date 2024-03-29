@@ -35,6 +35,9 @@ pub struct ProjectConfig {
     #[serde(alias = "cc")]
     pub compiler: String,
 
+    #[serde(alias = "std")]
+    pub standard: Option<String>,
+
     #[serde(default = "ProjectConfig::default_binaries")]
     #[serde(alias = "bin")]
     pub binaries: PathBuf,

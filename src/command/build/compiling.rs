@@ -73,6 +73,10 @@ pub fn compiling(
                 .stderr(Stdio::piped())
                 .arg("-fdiagnostics-color=always");
 
+            if let Some(standard) = project_config.standard.as_ref() {
+                command.arg(format!("-std={standard}"));
+            }
+
             if !flags.release {
                 command.arg("-O0").arg("-g").arg("-Wall");
             } else {
