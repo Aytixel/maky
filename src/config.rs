@@ -135,7 +135,7 @@ impl ProjectConfig {
     }
 
     fn default_includes() -> Vec<PathBuf> {
-        Vec::new()
+        vec![Path::new("include").to_path_buf()]
     }
 
     fn default_dependencies() -> HashMap<String, DependencyConfig> {
