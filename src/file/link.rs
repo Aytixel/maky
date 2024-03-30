@@ -1,5 +1,4 @@
 use std::{
-    fmt::Write,
     fs::read_to_string,
     io::{self},
     path::{Path, PathBuf},
@@ -7,7 +6,7 @@ use std::{
 
 use blake3::Hash;
 use hashbrown::{HashMap, HashSet};
-use pretok::Pretokenizer;
+use pretok::{Pretoken, Pretokenizer};
 
 use crate::config::ProjectConfig;
 
@@ -102,11 +101,11 @@ fn filter_h_c_link(
 
     for (h_file, c_files) in h_c_link.iter() {
         let h_code = read_to_string(h_file)?;
-        let h_prototypes = get_prototypes(&h_code);
+        let h_prototypes = get_h_prototypes(&h_code)?;
 
         for c_file in c_files {
             let c_code = read_to_string(c_file)?;
-            let c_prototypes = get_prototypes(&c_code);
+            let c_prototypes = get_c_prototypes(&c_code)?;
 
             if !c_prototypes.is_disjoint(&h_prototypes) {
                 link_filtered
@@ -120,84 +119,158 @@ fn filter_h_c_link(
     Ok(link_filtered)
 }
 
-enum DeclarationType {
-    Function,
-    Class,
-    Unknown,
+#[derive(Debug, PartialEq, Eq, Hash)]
+enum Declaration {
+    Class(String),
+    Function(String),
 }
 
-fn get_prototypes(code: &str) -> HashSet<String> {
+fn get_h_prototypes(code: &str) -> io::Result<HashSet<Declaration>> {
     let mut prototype_hashset = HashSet::new();
-    let mut declaration_type = DeclarationType::Unknown;
-    let mut prototype = String::new();
+    let mut pretokenizer = Pretokenizer::new(code);
+    let mut pretoken_vec: Vec<&str> = Vec::new();
+    let mut classname_vec = Vec::new();
 
-    for pretoken in Pretokenizer::new(code) {
-        declaration_type = match pretoken.s {
-            "extern" | "inline" | "static" => DeclarationType::Function,
-            "class" => DeclarationType::Class,
-            _ => match declaration_type {
-                DeclarationType::Function => {
-                    if !pretoken.s.starts_with('{') {
-                        prototype += " ";
+    while let Some(Pretoken { s, .. }) = pretokenizer.next() {
+        match s {
+            "class" => {
+                let classname = to_result(pretokenizer.next())?.s;
 
-                        if pretoken.s.ends_with(';') {
-                            prototype += &pretoken.s[..pretoken.s.len() - 1];
-                        } else {
-                            prototype += pretoken.s;
-                        }
-                    }
+                classname_vec.push(classname);
+                prototype_hashset.insert(Declaration::Class(classname.to_string()));
+            }
+            "};" => {
+                classname_vec.pop();
+            }
+            _ => {
+                if s.ends_with(");") {
+                    let prototype = {
+                        let mut parenthesis_count = count_parenthesis(s);
+                        let mut prototype: Vec<String> = vec![s.to_string()];
 
-                    if pretoken.s.ends_with(';') || pretoken.s.starts_with('{') {
-                        let mut formatted_function_prototype = String::new();
-                        let mut last_char = ' ';
+                        while parenthesis_count != 0 {
+                            let s = to_result(pretoken_vec.pop())?.to_string();
 
-                        for char in prototype.chars() {
-                            match char {
-                                ' ' | '\t' | '\n' | '\r' => {
-                                    if last_char != ' ' {
-                                        formatted_function_prototype += " ";
-                                        last_char = ' ';
-                                    }
-                                }
-                                '*' => {
-                                    if last_char != ' ' {
-                                        formatted_function_prototype += " *";
-                                    } else {
-                                        formatted_function_prototype += "*";
-                                    }
+                            clear_prototype(&s, &mut prototype);
 
-                                    last_char = '*';
-                                }
-                                _ => {
-                                    if last_char == '*' {
-                                        formatted_function_prototype += " ";
-                                        formatted_function_prototype.write_char(char).unwrap();
-                                        last_char = char;
-                                    } else {
-                                        formatted_function_prototype.write_char(char).unwrap();
-                                        last_char = char;
-                                    }
-                                }
-                            }
+                            parenthesis_count += count_parenthesis(&s);
+                            prototype.push(s);
                         }
 
-                        prototype_hashset.insert(formatted_function_prototype);
-                        prototype.clear();
+                        if prototype.last().unwrap().starts_with("(") {
+                            prototype.push(to_result(pretoken_vec.pop())?.to_string());
+                        }
 
-                        DeclarationType::Unknown
-                    } else {
-                        DeclarationType::Function
-                    }
-                }
-                DeclarationType::Class => {
-                    prototype_hashset.insert(pretoken.s.to_string());
+                        prototype.reverse();
+                        prototype[0] = prototype[0]
+                            .strip_prefix("*")
+                            .unwrap_or(&prototype[0])
+                            .to_string();
+                        prototype.join("")
+                    };
 
-                    DeclarationType::Unknown
+                    prototype_hashset.insert(Declaration::Function(
+                        classname_vec
+                            .last()
+                            .map_or(String::new(), |classname| classname.to_string() + "::")
+                            + &prototype,
+                    ));
+
+                    continue;
                 }
-                DeclarationType::Unknown => DeclarationType::Unknown,
-            },
+
+                pretoken_vec.push(s);
+            }
         }
     }
 
-    prototype_hashset
+    Ok(prototype_hashset)
+}
+
+fn get_c_prototypes(code: &str) -> io::Result<HashSet<Declaration>> {
+    let mut prototype_hashset = HashSet::new();
+    let mut pretokenizer = Pretokenizer::new(code);
+    let mut pretoken_vec: Vec<&str> = Vec::new();
+
+    while let Some(Pretoken { s, .. }) = pretokenizer.next() {
+        if s.ends_with("{") {
+            let prototype = {
+                let mut parenthesis_count = 0;
+                let mut prototype: Vec<String> = Vec::new();
+
+                loop {
+                    let s = to_result(pretoken_vec.pop())?.to_string();
+
+                    clear_prototype(&s, &mut prototype);
+
+                    parenthesis_count += count_parenthesis(&s);
+                    prototype.push(s);
+
+                    if parenthesis_count == 0 {
+                        break;
+                    }
+                }
+
+                if prototype.last().unwrap().starts_with("(") {
+                    prototype.push(to_result(pretoken_vec.pop())?.to_string());
+                }
+
+                prototype.reverse();
+
+                if let "if" | "else" | "for" | "while" | "switch" | "}" | "NULL" | "=" | "\\" =
+                    prototype[0].as_str()
+                {
+                    continue;
+                }
+
+                prototype[0] = prototype[0]
+                    .strip_prefix("*")
+                    .unwrap_or(&prototype[0])
+                    .to_string();
+                prototype.join("").split(".").last().unwrap().to_string() + ";"
+            };
+
+            prototype_hashset.insert(Declaration::Function(prototype));
+
+            continue;
+        }
+
+        pretoken_vec.push(s);
+    }
+
+    Ok(prototype_hashset)
+}
+
+fn clear_prototype(s: &String, prototype: &mut Vec<String>) {
+    if let Some(last_s) = prototype.last_mut() {
+        if (last_s.ends_with(",") || last_s.ends_with(")") || last_s.ends_with(");"))
+            && !(s.ends_with(",") || s.ends_with("("))
+        {
+            last_s.retain(|char| {
+                if let ',' | '*' | '[' | ']' | '(' | ')' | ';' = char {
+                    true
+                } else {
+                    false
+                }
+            });
+        }
+    }
+}
+
+fn count_parenthesis(code: &str) -> i32 {
+    code.chars().fold(0, |accumulator, char| {
+        accumulator
+            + match char {
+                ')' => 1,
+                '(' => -1,
+                _ => 0,
+            }
+    })
+}
+
+fn to_result<T>(option: Option<T>) -> io::Result<T> {
+    option.ok_or(io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        "There is no more token to parse.",
+    ))
 }

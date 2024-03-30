@@ -12,6 +12,7 @@ use crossterm::{
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
 use hashbrown::{HashMap, HashSet};
+use indoc::formatdoc;
 use kdam::{tqdm, BarExt, Column, RichProgress, Spinner};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
@@ -25,6 +26,7 @@ use super::BuildFlags;
 pub fn linking(
     project_path: &Path,
     project_config: &ProjectConfig,
+    main_hashset: HashSet<PathBuf>,
     import_hashmap: &HashMap<PathBuf, Vec<String>>,
     files_to_link: &Vec<(PathBuf, Option<String>, HashSet<PathBuf>)>,
     mut new_hash_hashmap: HashMap<PathBuf, Hash>,
@@ -124,6 +126,19 @@ pub fn linking(
             }
 
             for c_file in file_to_link {
+                if file != c_file && main_hashset.contains(c_file) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        formatdoc!(
+                            "Header file functions are defined in {} and {} containing each one a main function.
+                            You must define these functions in separate code files, not containing a main function.
+                            This is to avoid problems with redefining the main function during compilation.",
+                            file.to_string_lossy(),
+                            c_file.to_string_lossy()
+                        ),
+                    ));
+                }
+
                 if let Some(hash) = new_hash_hashmap.get(c_file) {
                     command.arg(
                         add_mode_path(&project_config.objects, flags.release)
@@ -236,7 +251,7 @@ pub fn linking(
                     Print("Errors : ".bold()),
                     ResetColor,
                     Print(file.to_string_lossy()),
-                    Print("\n"),
+                    Print("\n\n"),
                     Print(error),
                     Print("\n"),
                 )?;

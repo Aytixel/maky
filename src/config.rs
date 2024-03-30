@@ -233,11 +233,7 @@ impl ProjectConfig {
         if let Some(specific_libraries) = specific_config.libraries {
             for (specific_library_name, specific_library_config) in specific_libraries.into_iter() {
                 self.libraries
-                    .entry(specific_library_name)
-                    .and_modify(|library_config| {
-                        *library_config = specific_library_config.clone();
-                    })
-                    .or_insert(specific_library_config);
+                    .insert(specific_library_name, specific_library_config);
             }
         }
 

@@ -172,6 +172,7 @@ pub fn build(config_file: String, flags: &BuildFlags, stderr: &mut impl Write) -
             linking(
                 project_path,
                 &project_config,
+                main_hashset,
                 &import_hashmap,
                 &files_to_link,
                 new_hash_hashmap,

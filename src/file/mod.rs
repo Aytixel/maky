@@ -69,19 +69,14 @@ pub fn scan_dir(
                                 }
                                 2 => {
                                     if let Some(line) = code[match_.end()..].lines().next() {
-                                        let imports = line
-                                            .trim()
-                                            .split(",")
-                                            .map(str::trim)
-                                            .map(str::to_string)
-                                            .collect::<Vec<String>>();
-
-                                        import_hashmap
-                                            .entry(path.clone())
-                                            .and_modify(|imports_| {
-                                                imports_.extend_from_slice(&imports)
-                                            })
-                                            .or_insert(imports);
+                                        import_hashmap.insert(
+                                            path.clone(),
+                                            line.trim()
+                                                .split(",")
+                                                .map(str::trim)
+                                                .map(str::to_string)
+                                                .collect::<Vec<String>>(),
+                                        );
                                     }
                                 }
                                 _ => {}
