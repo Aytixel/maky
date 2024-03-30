@@ -17,7 +17,7 @@ pub mod link;
 
 lazy_static! {
     static ref PATTERN_MATCHER: AhoCorasick =
-        AhoCorasick::new(&["//@main", "//@lib ", "//@import "])
+        AhoCorasick::new(&["//@main", "//@lib", "//@import "])
             .expect("Failed to initialize AhoCorasick pattern matcher");
 }
 
@@ -25,8 +25,8 @@ pub fn scan_dir(
     project_path: &Path,
     project_config: &ProjectConfig,
     dir_path: &Path,
-    main_hashset: &mut HashSet<PathBuf>,
-    lib_hashmap: &mut HashMap<PathBuf, String>,
+    main_hashmap: &mut HashMap<PathBuf, Option<String>>,
+    lib_hashmap: &mut HashMap<PathBuf, Option<String>>,
     import_hashmap: &mut HashMap<PathBuf, Vec<String>>,
     h_h_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
     h_c_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
@@ -54,25 +54,24 @@ pub fn scan_dir(
                         c_h_link.insert(path.clone(), includes.clone());
 
                         for match_ in PATTERN_MATCHER.find_iter(code) {
+                            let line_option = code[match_.end()..]
+                                .lines()
+                                .next()
+                                .map(|line| line.trim().to_string())
+                                .filter(|line| !line.is_empty());
+
                             match match_.pattern().as_usize() {
                                 0 => {
-                                    main_hashset.insert(path.clone());
+                                    main_hashmap.insert(path.clone(), line_option);
                                 }
                                 1 => {
-                                    if let Some(lib_name) = code[match_.end()..]
-                                        .lines()
-                                        .next()
-                                        .map(|line| line.trim().to_string())
-                                    {
-                                        lib_hashmap.insert(path.clone(), lib_name);
-                                    }
+                                    lib_hashmap.insert(path.clone(), line_option);
                                 }
                                 2 => {
-                                    if let Some(line) = code[match_.end()..].lines().next() {
+                                    if let Some(line) = line_option {
                                         import_hashmap.insert(
                                             path.clone(),
-                                            line.trim()
-                                                .split(",")
+                                            line.split(",")
                                                 .map(str::trim)
                                                 .map(str::to_string)
                                                 .collect::<Vec<String>>(),
@@ -105,7 +104,7 @@ pub fn scan_dir(
                     project_path,
                     project_config,
                     &path,
-                    main_hashset,
+                    main_hashmap,
                     lib_hashmap,
                     import_hashmap,
                     h_h_link,

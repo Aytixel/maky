@@ -6,6 +6,7 @@ use std::{
 
 use blake3::Hash;
 use hashbrown::{HashMap, HashSet};
+use indoc::formatdoc;
 use pretok::{Pretoken, Pretokenizer};
 
 use crate::config::ProjectConfig;
@@ -15,16 +16,19 @@ use super::get_includes;
 pub fn link(
     project_path: &Path,
     project_config: &ProjectConfig,
-    main_hashset: &HashSet<PathBuf>,
-    lib_hashmap: &HashMap<PathBuf, String>,
+    main_hashmap: &HashMap<PathBuf, Option<String>>,
+    lib_hashmap: &HashMap<PathBuf, Option<String>>,
     files_to_compile: &HashMap<PathBuf, Hash>,
     h_c_link: &HashMap<PathBuf, HashSet<PathBuf>>,
     c_h_link: &HashMap<PathBuf, HashSet<PathBuf>>,
-) -> io::Result<Vec<(PathBuf, Option<String>, HashSet<PathBuf>)>> {
+) -> io::Result<Vec<(PathBuf, Option<String>, Option<String>, HashSet<PathBuf>)>> {
     let h_c_link_filtered = filter_h_c_link(h_c_link)?;
     let mut files_to_link = Vec::new();
 
-    let mut link_files = |file: &Path, lib_name_option: Option<String>| -> io::Result<()> {
+    let mut link_files = |file: &Path,
+                          main_name_option: Option<String>,
+                          lib_name_option: Option<String>|
+     -> io::Result<()> {
         let mut file_to_link = HashSet::new();
         let mut already_explored_h = HashSet::new();
         let mut need_to_be_link = false;
@@ -41,6 +45,19 @@ pub fn link(
         for h_file in already_explored_h.iter() {
             if let Some(c_files) = h_c_link_filtered.get(h_file) {
                 for c_file in c_files {
+                    if file != c_file && main_hashmap.contains_key(c_file) {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            formatdoc!(
+                                "Header file functions are defined in {} and {} containing each one a main function.
+                                You must define these functions in separate code files, not containing a main function.
+                                This is to avoid problems with redefining the main function during compilation.",
+                                file.to_string_lossy(),
+                                c_file.to_string_lossy()
+                            ),
+                        ));
+                    }
+
                     if files_to_compile.contains_key(c_file) {
                         need_to_be_link = true;
                     }
@@ -57,18 +74,23 @@ pub fn link(
         file_to_link.insert(file.to_path_buf());
 
         if need_to_be_link {
-            files_to_link.push((file.to_path_buf(), lib_name_option, file_to_link));
+            files_to_link.push((
+                file.to_path_buf(),
+                main_name_option,
+                lib_name_option,
+                file_to_link,
+            ));
         }
 
         Ok(())
     };
 
-    for main_file in main_hashset {
-        link_files(main_file, None)?;
+    for (main_file, main_name) in main_hashmap {
+        link_files(main_file, main_name.clone(), None)?;
     }
 
     for (lib_file, lib_name) in lib_hashmap.iter() {
-        link_files(lib_file, Some(lib_name.clone()))?;
+        link_files(lib_file, None, lib_name.clone())?;
     }
 
     Ok(files_to_link)

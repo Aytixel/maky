@@ -12,7 +12,6 @@ use crossterm::{
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
 use hashbrown::{HashMap, HashSet};
-use indoc::formatdoc;
 use kdam::{tqdm, BarExt, Column, RichProgress, Spinner};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
@@ -26,9 +25,8 @@ use super::BuildFlags;
 pub fn linking(
     project_path: &Path,
     project_config: &ProjectConfig,
-    main_hashset: HashSet<PathBuf>,
     import_hashmap: &HashMap<PathBuf, Vec<String>>,
-    files_to_link: &Vec<(PathBuf, Option<String>, HashSet<PathBuf>)>,
+    files_to_link: &Vec<(PathBuf, Option<String>, Option<String>, HashSet<PathBuf>)>,
     mut new_hash_hashmap: HashMap<PathBuf, Hash>,
     flags: &BuildFlags,
     stderr: &mut impl Write,
@@ -106,7 +104,7 @@ pub fn linking(
 
     let commands = files_to_link
         .into_par_iter()
-        .map(|(file, lib_name_option, file_to_link)| {
+        .map(|(file, main_name_option, lib_name_option, file_to_link)| {
             let mut command = Command::new(&project_config.compiler);
 
             command
@@ -126,19 +124,6 @@ pub fn linking(
             }
 
             for c_file in file_to_link {
-                if file != c_file && main_hashset.contains(c_file) {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        formatdoc!(
-                            "Header file functions are defined in {} and {} containing each one a main function.
-                            You must define these functions in separate code files, not containing a main function.
-                            This is to avoid problems with redefining the main function during compilation.",
-                            file.to_string_lossy(),
-                            c_file.to_string_lossy()
-                        ),
-                    ));
-                }
-
                 if let Some(hash) = new_hash_hashmap.get(c_file) {
                     command.arg(
                         add_mode_path(&project_config.objects, flags.release)
@@ -173,13 +158,13 @@ pub fn linking(
                 );
                 output_file.set_extension(env::consts::DLL_EXTENSION);
             } else {
-                output_path = add_mode_path(&project_config.binaries, flags.release).join(
-                    file.parent()
-                        .unwrap_or(Path::new("./"))
-                        .strip_prefix(project_path)
-                        .unwrap_or(Path::new("./")),
+                output_path = add_mode_path(&project_config.binaries, flags.release)
+                    .join(file.parent().unwrap().strip_prefix(project_path).unwrap());
+                output_file = output_path.join(
+                    main_name_option
+                        .clone()
+                        .unwrap_or(file.file_stem().unwrap().to_string_lossy().to_string()),
                 );
-                output_file = output_path.join(file.file_stem().unwrap());
                 output_file.set_extension(env::consts::EXE_EXTENSION);
             }
 

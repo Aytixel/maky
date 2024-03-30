@@ -13,7 +13,7 @@ use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
-use hashbrown::{HashMap, HashSet};
+use hashbrown::HashMap;
 
 use crate::{
     config::{LoadConfig, ProjectConfig},
@@ -120,7 +120,7 @@ pub fn build(config_file: String, flags: &BuildFlags, stderr: &mut impl Write) -
                 HashMap::load(project_path).unwrap_or_default()
             };
             let mut new_hash_hashmap = HashMap::new();
-            let mut main_hashset = HashSet::new();
+            let mut main_hashmap = HashMap::new();
             let mut lib_hashmap = HashMap::new();
             let mut import_hashmap = HashMap::new();
             let mut h_h_link = HashMap::new();
@@ -132,7 +132,7 @@ pub fn build(config_file: String, flags: &BuildFlags, stderr: &mut impl Write) -
                     project_path,
                     &project_config,
                     &project_path.join(source),
-                    &mut main_hashset,
+                    &mut main_hashmap,
                     &mut lib_hashmap,
                     &mut import_hashmap,
                     &mut h_h_link,
@@ -162,7 +162,7 @@ pub fn build(config_file: String, flags: &BuildFlags, stderr: &mut impl Write) -
             let files_to_link = link(
                 project_path,
                 &project_config,
-                &main_hashset,
+                &main_hashmap,
                 &lib_hashmap,
                 &files_to_compile,
                 &h_c_link,
@@ -172,7 +172,6 @@ pub fn build(config_file: String, flags: &BuildFlags, stderr: &mut impl Write) -
             linking(
                 project_path,
                 &project_config,
-                main_hashset,
                 &import_hashmap,
                 &files_to_link,
                 new_hash_hashmap,
