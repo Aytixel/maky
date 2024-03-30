@@ -105,7 +105,7 @@ pub fn linking(
     let commands = files_to_link
         .into_par_iter()
         .map(|(file, main_name_option, lib_name_option, file_to_link)| {
-            let mut command = Command::new(&project_config.compiler);
+            let mut command = Command::new(project_config.get_compiler(file).unwrap());
 
             command
                 .current_dir(project_path)

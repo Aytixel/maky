@@ -204,3 +204,16 @@ fn is_header_file(extension: &OsStr) -> bool {
         || extension == "hxx"
         || extension == "h++"
 }
+
+pub enum Language {
+    C,
+    Cpp,
+}
+
+pub fn get_language(extension: &OsStr) -> Language {
+    match extension.to_string_lossy().to_string().as_str() {
+        "c" | "h" => Language::C,
+        "cc" | "cpp" | "cxx" | "c++" | "hh" | "hpp" | "hxx" | "h++" => Language::Cpp,
+        _ => Language::C,
+    }
+}

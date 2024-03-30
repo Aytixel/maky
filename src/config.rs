@@ -16,7 +16,10 @@ use serde::{Deserialize, Serialize};
 use serde_with::{formats::PreferOne, serde_as, OneOrMany};
 use string_template::Template;
 
-use crate::pkg_config::ParsePkgVersion;
+use crate::{
+    file::{get_language, Language},
+    pkg_config::ParsePkgVersion,
+};
 
 pub trait LoadConfig {
     fn load(path: &Path) -> io::Result<Self>
@@ -31,9 +34,13 @@ pub trait SaveConfig {
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ProjectConfig {
-    #[serde(default = "ProjectConfig::default_compiler")]
+    #[serde(default = "ProjectConfig::default_c_compiler")]
     #[serde(alias = "cc")]
-    pub compiler: String,
+    pub c_compiler: String,
+
+    #[serde(default = "ProjectConfig::default_cpp_compiler")]
+    #[serde(alias = "cxx")]
+    pub cpp_compiler: String,
 
     #[serde(alias = "std")]
     pub standard: Option<String>,
@@ -78,6 +85,14 @@ pub struct ProjectConfig {
 }
 
 impl ProjectConfig {
+    pub fn get_compiler(&self, file: &Path) -> Option<String> {
+        file.extension()
+            .map(|extention| match get_language(extention) {
+                Language::C => self.c_compiler.clone(),
+                Language::Cpp => self.cpp_compiler.clone(),
+            })
+    }
+
     pub fn handle_error(error: io::Error, project_config_path: &Path) -> io::Result<()> {
         if let io::ErrorKind::Other = error.kind() {
             execute!(
@@ -99,8 +114,12 @@ impl ProjectConfig {
         }
     }
 
-    fn default_compiler() -> String {
+    fn default_c_compiler() -> String {
         "gcc".to_string()
+    }
+
+    fn default_cpp_compiler() -> String {
+        "g++".to_string()
     }
 
     fn default_binaries() -> PathBuf {
@@ -129,7 +148,8 @@ impl ProjectConfig {
 
     fn merge_specific_config(&mut self) {
         let mut specific_config = SpecificConfig {
-            compiler: None,
+            c_compiler: None,
+            cpp_compiler: None,
             binaries: None,
             objects: None,
             sources: None,
@@ -143,58 +163,67 @@ impl ProjectConfig {
             oss.push(env::consts::FAMILY);
         }
 
-        let mut inner_merge_specific_config =
-            |selected_specific_config: Option<&SpecificConfig>| {
-                if let Some(selected_specific_config) = selected_specific_config {
-                    if let Some(specific_compiler) = selected_specific_config.compiler.clone() {
-                        if let Some(compiler) = &mut specific_config.compiler {
-                            *compiler = specific_compiler;
-                        } else {
-                            specific_config.compiler = Some(specific_compiler);
-                        }
-                    }
-
-                    if let Some(specific_binaries) = selected_specific_config.binaries.clone() {
-                        if let Some(binaries) = &mut specific_config.binaries {
-                            *binaries = specific_binaries;
-                        } else {
-                            specific_config.binaries = Some(specific_binaries);
-                        }
-                    }
-
-                    if let Some(specific_objects) = selected_specific_config.objects.clone() {
-                        if let Some(objects) = &mut specific_config.objects {
-                            *objects = specific_objects;
-                        } else {
-                            specific_config.objects = Some(specific_objects);
-                        }
-                    }
-
-                    if let Some(specific_sources) = selected_specific_config.sources.clone() {
-                        if let Some(sources) = &mut specific_config.sources {
-                            sources.extend(specific_sources);
-                        } else {
-                            specific_config.sources = Some(specific_sources);
-                        }
-                    }
-
-                    if let Some(specific_includes) = selected_specific_config.includes.clone() {
-                        if let Some(includes) = &mut specific_config.includes {
-                            includes.extend(specific_includes);
-                        } else {
-                            specific_config.includes = Some(specific_includes);
-                        }
-                    }
-
-                    if let Some(specific_libraries) = selected_specific_config.libraries.clone() {
-                        if let Some(libraries) = &mut specific_config.libraries {
-                            libraries.extend(specific_libraries);
-                        } else {
-                            specific_config.libraries = Some(specific_libraries);
-                        }
+        let mut inner_merge_specific_config = |selected_specific_config: Option<
+            &SpecificConfig,
+        >| {
+            if let Some(selected_specific_config) = selected_specific_config {
+                if let Some(specific_c_compiler) = selected_specific_config.c_compiler.clone() {
+                    if let Some(c_compiler) = &mut specific_config.c_compiler {
+                        *c_compiler = specific_c_compiler;
+                    } else {
+                        specific_config.c_compiler = Some(specific_c_compiler);
                     }
                 }
-            };
+
+                if let Some(specific_cpp_compiler) = selected_specific_config.cpp_compiler.clone() {
+                    if let Some(cpp_compiler) = &mut specific_config.cpp_compiler {
+                        *cpp_compiler = specific_cpp_compiler;
+                    } else {
+                        specific_config.cpp_compiler = Some(specific_cpp_compiler);
+                    }
+                }
+
+                if let Some(specific_binaries) = selected_specific_config.binaries.clone() {
+                    if let Some(binaries) = &mut specific_config.binaries {
+                        *binaries = specific_binaries;
+                    } else {
+                        specific_config.binaries = Some(specific_binaries);
+                    }
+                }
+
+                if let Some(specific_objects) = selected_specific_config.objects.clone() {
+                    if let Some(objects) = &mut specific_config.objects {
+                        *objects = specific_objects;
+                    } else {
+                        specific_config.objects = Some(specific_objects);
+                    }
+                }
+
+                if let Some(specific_sources) = selected_specific_config.sources.clone() {
+                    if let Some(sources) = &mut specific_config.sources {
+                        sources.extend(specific_sources);
+                    } else {
+                        specific_config.sources = Some(specific_sources);
+                    }
+                }
+
+                if let Some(specific_includes) = selected_specific_config.includes.clone() {
+                    if let Some(includes) = &mut specific_config.includes {
+                        includes.extend(specific_includes);
+                    } else {
+                        specific_config.includes = Some(specific_includes);
+                    }
+                }
+
+                if let Some(specific_libraries) = selected_specific_config.libraries.clone() {
+                    if let Some(libraries) = &mut specific_config.libraries {
+                        libraries.extend(specific_libraries);
+                    } else {
+                        specific_config.libraries = Some(specific_libraries);
+                    }
+                }
+            }
+        };
 
         inner_merge_specific_config(self.arch_specific.get(env::consts::ARCH));
 
@@ -210,8 +239,12 @@ impl ProjectConfig {
             }
         }
 
-        if let Some(specific_compiler) = specific_config.compiler {
-            self.compiler = specific_compiler;
+        if let Some(specific_c_compiler) = specific_config.c_compiler {
+            self.c_compiler = specific_c_compiler;
+        }
+
+        if let Some(specific_cpp_compiler) = specific_config.cpp_compiler {
+            self.cpp_compiler = specific_cpp_compiler;
         }
 
         if let Some(specific_binaries) = specific_config.binaries {
@@ -310,7 +343,10 @@ pub enum DependencyConfig {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SpecificConfig {
     #[serde(alias = "cc")]
-    pub compiler: Option<String>,
+    pub c_compiler: Option<String>,
+
+    #[serde(alias = "cxx")]
+    pub cpp_compiler: Option<String>,
 
     #[serde(alias = "bin")]
     pub binaries: Option<PathBuf>,

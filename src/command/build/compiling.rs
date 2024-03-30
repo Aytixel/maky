@@ -64,8 +64,8 @@ pub fn compiling(
 
     let commands = files_to_compile
         .into_par_iter()
-        .map(|(file_path, file_hash)| {
-            let mut command = Command::new(&project_config.compiler);
+        .map(|(file, file_hash)| {
+            let mut command = Command::new(project_config.get_compiler(file).unwrap());
 
             command
                 .current_dir(project_path)
@@ -84,11 +84,11 @@ pub fn compiling(
             }
 
             (
-                file_path,
+                file,
                 command
                     .args(&include_args)
                     .arg("-c")
-                    .arg(file_path.strip_prefix(project_path).unwrap())
+                    .arg(file.strip_prefix(project_path).unwrap())
                     .arg("-o")
                     .arg(
                         add_mode_path(&project_config.objects, flags.release)
