@@ -151,19 +151,16 @@ pub fn linking(
                 }
             }
 
-            let output_path;
+            let output_path = add_mode_path(&project_config.binaries, flags.release);
             let mut output_file;
             let name = name_option
                 .clone()
                 .unwrap_or(file.file_stem().unwrap().to_string_lossy().to_string());
 
             if *is_library {
-                output_path = add_mode_path(&project_config.binaries, flags.release);
                 output_file = output_path.join(env::consts::DLL_PREFIX.to_string() + &name);
                 output_file.set_extension(env::consts::DLL_EXTENSION);
             } else {
-                output_path = add_mode_path(&project_config.binaries, flags.release)
-                    .join(file.parent().unwrap().strip_prefix(project_path).unwrap());
                 output_file = output_path.join(name);
                 output_file.set_extension(env::consts::EXE_EXTENSION);
             }
