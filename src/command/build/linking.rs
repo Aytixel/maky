@@ -6,6 +6,7 @@ use std::{
     process::{Child, Command, Stdio},
 };
 
+use aho_corasick::AhoCorasick;
 use blake3::Hash;
 use crossterm::{
     execute,
@@ -123,12 +124,18 @@ pub fn linking(
                 command.arg("--shared");
             }
 
+            let mut o_c_link = Vec::new();
+
             for c_file in file_to_link {
                 if let Some(hash) = new_hash_hashmap.get(c_file) {
-                    command.arg(
-                        add_mode_path(&project_config.objects, flags.release)
-                            .join(hash.to_hex().as_str()),
-                    );
+                    let o_file = add_mode_path(&project_config.objects, flags.release)
+                        .join(hash.to_hex().as_str());
+
+                    command.arg(&o_file);
+                    o_c_link.push((
+                        o_file.to_string_lossy().to_string(),
+                        c_file.to_string_lossy().to_string(),
+                    ));
                 } else {
                     return Ok(None);
                 }
@@ -166,14 +173,15 @@ pub fn linking(
             Ok(Some((
                 file,
                 command.arg("-o").arg(output_file).spawn().unwrap(),
+                o_c_link,
             )))
         })
-        .collect::<Vec<io::Result<Option<(&PathBuf, Child)>>>>();
+        .collect::<Vec<io::Result<Option<(&PathBuf, Child, Vec<(String, String)>)>>>>();
 
     let mut errors = Vec::new();
 
     for command in commands.into_iter() {
-        if let Some((file, mut command)) = command? {
+        if let Some((file, mut command, o_c_link)) = command? {
             if let Some(link_progress_bar) = &mut link_progress_bar_option {
                 link_progress_bar.columns[2] = Column::Text(
                     "[bold blue]".to_string()
@@ -194,7 +202,7 @@ pub fn linking(
 
                 if let Some(stderr) = command.stderr.as_mut() {
                     stderr.read_to_string(&mut buffer)?;
-                    errors.push((file, buffer));
+                    errors.push((file, buffer, o_c_link));
                 }
             } else {
                 new_hash_hashmap.remove(file);
@@ -215,13 +223,20 @@ pub fn linking(
     if !errors.is_empty() {
         let mut is_first = true;
 
-        for (file, error) in errors.iter() {
+        for (file, error, o_c_link) in errors.into_iter() {
             if !error.is_empty() {
                 if is_first {
                     writeln!(stderr)?;
 
                     is_first = false;
                 }
+
+                let (o_file, c_file): (Vec<String>, Vec<String>) = o_c_link.into_iter().unzip();
+                let mut formatted_error = Vec::new();
+
+                AhoCorasick::new(&o_file)
+                    .expect("Failed to initialize AhoCorasick pattern matcher")
+                    .try_stream_replace_all(error.as_bytes(), &mut formatted_error, &c_file)?;
 
                 execute!(
                     stderr,
@@ -230,7 +245,7 @@ pub fn linking(
                     ResetColor,
                     Print(file.to_string_lossy()),
                     Print("\n\n"),
-                    Print(error),
+                    Print(String::from_utf8_lossy(&formatted_error)),
                     Print("\n"),
                 )?;
             }
