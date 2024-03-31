@@ -26,7 +26,7 @@ pub fn linking(
     project_path: &Path,
     project_config: &ProjectConfig,
     import_hashmap: &HashMap<PathBuf, Vec<String>>,
-    files_to_link: &Vec<(PathBuf, Option<String>, Option<String>, HashSet<PathBuf>)>,
+    files_to_link: &Vec<(PathBuf, bool, Option<String>, HashSet<PathBuf>)>,
     mut new_hash_hashmap: HashMap<PathBuf, Hash>,
     flags: &BuildFlags,
     stderr: &mut impl Write,
@@ -104,7 +104,7 @@ pub fn linking(
 
     let commands = files_to_link
         .into_par_iter()
-        .map(|(file, main_name_option, lib_name_option, file_to_link)| {
+        .map(|(file, is_library, name_option, file_to_link)| {
             let mut command = Command::new(project_config.get_compiler(file).unwrap());
 
             command
@@ -119,8 +119,8 @@ pub fn linking(
                 command.arg("-s");
             }
 
-            if lib_name_option.is_some() {
-                command.arg("--shared").arg("-fpic");
+            if *is_library {
+                command.arg("--shared");
             }
 
             for c_file in file_to_link {
@@ -146,25 +146,18 @@ pub fn linking(
 
             let output_path;
             let mut output_file;
+            let name = name_option
+                .clone()
+                .unwrap_or(file.file_stem().unwrap().to_string_lossy().to_string());
 
-            if let Some(lib_name) = lib_name_option {
+            if *is_library {
                 output_path = add_mode_path(&project_config.binaries, flags.release);
-                output_file = output_path.join(
-                    env::consts::FAMILY
-                        .eq("unix")
-                        .then_some("lib".to_string())
-                        .unwrap_or_default()
-                        + lib_name,
-                );
+                output_file = output_path.join(env::consts::DLL_PREFIX.to_string() + &name);
                 output_file.set_extension(env::consts::DLL_EXTENSION);
             } else {
                 output_path = add_mode_path(&project_config.binaries, flags.release)
                     .join(file.parent().unwrap().strip_prefix(project_path).unwrap());
-                output_file = output_path.join(
-                    main_name_option
-                        .clone()
-                        .unwrap_or(file.file_stem().unwrap().to_string_lossy().to_string()),
-                );
+                output_file = output_path.join(name);
                 output_file.set_extension(env::consts::EXE_EXTENSION);
             }
 

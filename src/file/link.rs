@@ -21,13 +21,13 @@ pub fn link(
     files_to_compile: &HashMap<PathBuf, Hash>,
     h_c_link: &HashMap<PathBuf, HashSet<PathBuf>>,
     c_h_link: &HashMap<PathBuf, HashSet<PathBuf>>,
-) -> io::Result<Vec<(PathBuf, Option<String>, Option<String>, HashSet<PathBuf>)>> {
+) -> io::Result<Vec<(PathBuf, bool, Option<String>, HashSet<PathBuf>)>> {
     let h_c_link_filtered = filter_h_c_link(h_c_link)?;
     let mut files_to_link = Vec::new();
 
     let mut link_files = |file: &Path,
-                          main_name_option: Option<String>,
-                          lib_name_option: Option<String>|
+                          is_library: bool,
+                          name_option: Option<String>|
      -> io::Result<()> {
         let mut file_to_link = HashSet::new();
         let mut already_explored_h = HashSet::new();
@@ -74,23 +74,18 @@ pub fn link(
         file_to_link.insert(file.to_path_buf());
 
         if need_to_be_link {
-            files_to_link.push((
-                file.to_path_buf(),
-                main_name_option,
-                lib_name_option,
-                file_to_link,
-            ));
+            files_to_link.push((file.to_path_buf(), is_library, name_option, file_to_link));
         }
 
         Ok(())
     };
 
     for (main_file, main_name) in main_hashmap {
-        link_files(main_file, main_name.clone(), None)?;
+        link_files(main_file, false, main_name.clone())?;
     }
 
     for (lib_file, lib_name) in lib_hashmap.iter() {
-        link_files(lib_file, None, lib_name.clone())?;
+        link_files(lib_file, true, lib_name.clone())?;
     }
 
     Ok(files_to_link)

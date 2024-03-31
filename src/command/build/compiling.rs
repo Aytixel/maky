@@ -71,7 +71,8 @@ pub fn compiling(
                 .current_dir(project_path)
                 .stdout(Stdio::null())
                 .stderr(Stdio::piped())
-                .arg("-fdiagnostics-color=always");
+                .arg("-fdiagnostics-color=always")
+                .arg("-fpic");
 
             if let Some(standard) = project_config.standard.as_ref() {
                 command.arg(format!("-std={standard}"));
