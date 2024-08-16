@@ -1,8 +1,9 @@
 #include <iostream>
 
-class HelloWorld {
-    public:
-        HelloWorld();
+class HelloWorld
+{
+public:
+    HelloWorld();
 
-        void helloWorld();
+    void helloWorld();
 };

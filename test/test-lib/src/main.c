@@ -5,9 +5,9 @@
 //@main
 int main()
 {
-	hello();
-	world();
-	helloworld();
+    hello();
+    world();
+    helloworld();
 
-	return 0;
+    return 0;
 }

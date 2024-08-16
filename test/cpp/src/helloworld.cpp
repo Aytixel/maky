@@ -1,9 +1,11 @@
 #include <helloworld.hpp>
 
-HelloWorld::HelloWorld() {
+HelloWorld::HelloWorld()
+{
     std::cout << "Hello World !\n";
 }
 
-void HelloWorld::helloWorld() {
+void HelloWorld::helloWorld()
+{
     std::cout << "Hello World !\n";
 }

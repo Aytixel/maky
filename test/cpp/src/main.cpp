@@ -3,9 +3,9 @@
 //@main
 int main()
 {
-	HelloWorld hello_world;
+    HelloWorld hello_world;
 
-	hello_world.helloWorld();
+    hello_world.helloWorld();
 
-	return 0;
+    return 0;
 }
