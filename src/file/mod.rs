@@ -3,23 +3,22 @@ use std::{
     fs::{read_dir, read_to_string},
     io,
     path::{Path, PathBuf},
+    sync::LazyLock,
 };
 
 use aho_corasick::AhoCorasick;
 use blake3::{hash, Hash};
 use hashbrown::{HashMap, HashSet};
-use lazy_static::lazy_static;
 
 use crate::config::ProjectConfig;
 
 pub mod compile;
 pub mod link;
 
-lazy_static! {
-    static ref PATTERN_MATCHER: AhoCorasick =
-        AhoCorasick::new(&["//@main", "//@lib", "//@import "])
-            .expect("Failed to initialize AhoCorasick pattern matcher");
-}
+static PATTERN_MATCHER: LazyLock<AhoCorasick> = LazyLock::new(|| {
+    AhoCorasick::new(&["//@main", "//@lib", "//@import "])
+        .expect("Failed to initialize AhoCorasick pattern matcher")
+});
 
 pub fn scan_dir(
     project_path: &Path,
@@ -32,7 +31,7 @@ pub fn scan_dir(
     h_c_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
     c_h_link: &mut HashMap<PathBuf, HashSet<PathBuf>>,
     hash_hashmap: &mut HashMap<PathBuf, Hash>,
-) -> io::Result<()> {
+) -> anyhow::Result<()> {
     for entry in read_dir(dir_path)? {
         if let Ok(entry) = entry {
             let path = entry.path();
@@ -119,7 +118,7 @@ pub fn scan_dir(
     Ok(())
 }
 
-pub fn scan_dir_dependency(dir_path: &Path) -> io::Result<Vec<PathBuf>> {
+pub fn scan_dir_dependency(dir_path: &Path) -> anyhow::Result<Vec<PathBuf>> {
     let mut h_files = Vec::new();
 
     for entry in read_dir(dir_path)? {
@@ -143,7 +142,7 @@ pub fn scan_dir_dependency(dir_path: &Path) -> io::Result<Vec<PathBuf>> {
 
 const INCLUDE_PATTERN: &str = "#include";
 
-fn get_includes(
+pub fn get_includes(
     path: &Path,
     project_path: &Path,
     include_path_vec: &Vec<PathBuf>,
@@ -208,12 +207,13 @@ fn is_header_file(extension: &OsStr) -> bool {
 pub enum Language {
     C,
     Cpp,
+    Other,
 }
 
 pub fn get_language(extension: &OsStr) -> Language {
     match extension.to_string_lossy().to_string().as_str() {
         "c" | "h" => Language::C,
         "cc" | "cpp" | "cxx" | "c++" | "hh" | "hpp" | "hxx" | "h++" => Language::Cpp,
-        _ => Language::C,
+        _ => Language::Other,
     }
 }

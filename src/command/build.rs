@@ -4,7 +4,7 @@ mod linking;
 
 use std::{
     fs::{create_dir, create_dir_all, read_dir, remove_dir, remove_file},
-    io::{self, stdout, Write},
+    io::{stdout, Write},
     path::Path,
     time::Instant,
 };
@@ -33,7 +33,11 @@ pub struct BuildFlags {
     pub pretty: bool,
 }
 
-pub fn build(config_file: String, flags: &BuildFlags, stderr: &mut impl Write) -> io::Result<()> {
+pub fn build(
+    config_file: String,
+    flags: &BuildFlags,
+    stderr: &mut impl Write,
+) -> anyhow::Result<()> {
     let (project_path, project_config_path) = &get_project_path(&config_file);
     let time = Instant::now();
 

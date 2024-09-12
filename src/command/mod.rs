@@ -1,5 +1,6 @@
 mod build;
 mod clean;
+mod format;
 mod init;
 mod run;
 
@@ -7,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 pub use build::*;
 pub use clean::*;
+pub use format::*;
 pub use init::*;
 pub use run::*;
 

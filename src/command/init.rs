@@ -1,12 +1,11 @@
 use std::{
     fs::{create_dir, create_dir_all, write},
-    io,
     path::{Path, PathBuf},
 };
 
 use git2::Repository;
 
-pub fn init(path: Option<PathBuf>) -> io::Result<()> {
+pub fn init(path: Option<PathBuf>) -> anyhow::Result<()> {
     let project_path = path.unwrap_or(Path::new("./").to_path_buf());
 
     if !project_path.join("Maky.toml").exists() {

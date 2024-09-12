@@ -1,9 +1,9 @@
 use std::{
     fs::read_to_string,
-    io::{self},
     path::{Path, PathBuf},
 };
 
+use anyhow::anyhow;
 use blake3::Hash;
 use hashbrown::{HashMap, HashSet};
 use indoc::formatdoc;
@@ -21,14 +21,14 @@ pub fn link(
     files_to_compile: &HashMap<PathBuf, Hash>,
     h_c_link: &HashMap<PathBuf, HashSet<PathBuf>>,
     c_h_link: &HashMap<PathBuf, HashSet<PathBuf>>,
-) -> io::Result<Vec<(PathBuf, bool, Option<String>, HashSet<PathBuf>)>> {
+) -> anyhow::Result<Vec<(PathBuf, bool, Option<String>, HashSet<PathBuf>)>> {
     let h_c_link_filtered = filter_h_c_link(h_c_link)?;
     let mut files_to_link = Vec::new();
 
     let mut link_files = |file: &Path,
                           is_library: bool,
                           name_option: Option<String>|
-     -> io::Result<()> {
+     -> anyhow::Result<()> {
         let mut file_to_link = HashSet::new();
         let mut already_explored_h = HashSet::new();
         let mut need_to_be_link = false;
@@ -46,16 +46,13 @@ pub fn link(
             if let Some(c_files) = h_c_link_filtered.get(h_file) {
                 for c_file in c_files {
                     if file != c_file && main_hashmap.contains_key(c_file) {
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidInput,
-                            formatdoc!(
-                                "Header file functions are defined in {} and {} containing each one a main function.
-                                You must define these functions in separate code files, not containing a main function.
-                                This is to avoid problems with redefining the main function during compilation.",
-                                file.to_string_lossy(),
-                                c_file.to_string_lossy()
-                            ),
-                        ));
+                        return Err(anyhow!("{}", formatdoc!(
+                            "Header file functions are defined in {} and {} containing each one a main function.
+                            You must define these functions in separate code files, not containing a main function.
+                            This is to avoid problems with redefining the main function during compilation.",
+                            file.to_string_lossy(),
+                            c_file.to_string_lossy()
+                        )));
                     }
 
                     if files_to_compile.contains_key(c_file) {
@@ -96,7 +93,7 @@ fn find_h(
     project_config: &ProjectConfig,
     h_file: &Path,
     already_explored_h: &mut HashSet<PathBuf>,
-) -> io::Result<()> {
+) -> anyhow::Result<()> {
     if !already_explored_h.contains(h_file) {
         already_explored_h.insert(h_file.to_path_buf());
 
@@ -113,7 +110,7 @@ fn find_h(
 
 fn filter_h_c_link(
     h_c_link: &HashMap<PathBuf, HashSet<PathBuf>>,
-) -> io::Result<HashMap<PathBuf, HashSet<PathBuf>>> {
+) -> anyhow::Result<HashMap<PathBuf, HashSet<PathBuf>>> {
     let mut link_filtered: HashMap<PathBuf, HashSet<PathBuf>> = HashMap::new();
 
     for (h_file, c_files) in h_c_link.iter() {
@@ -142,7 +139,7 @@ enum Declaration {
     Function(String),
 }
 
-fn get_h_prototypes(code: &str) -> io::Result<HashSet<Declaration>> {
+fn get_h_prototypes(code: &str) -> anyhow::Result<HashSet<Declaration>> {
     let mut prototype_hashset = HashSet::new();
     let mut pretokenizer = Pretokenizer::new(code);
     let mut pretoken_vec: Vec<&str> = Vec::new();
@@ -204,7 +201,7 @@ fn get_h_prototypes(code: &str) -> io::Result<HashSet<Declaration>> {
     Ok(prototype_hashset)
 }
 
-fn get_c_prototypes(code: &str) -> io::Result<HashSet<Declaration>> {
+fn get_c_prototypes(code: &str) -> anyhow::Result<HashSet<Declaration>> {
     let mut prototype_hashset = HashSet::new();
     let mut pretokenizer = Pretokenizer::new(code);
     let mut pretoken_vec: Vec<&str> = Vec::new();
@@ -285,9 +282,6 @@ fn count_parenthesis(code: &str) -> i32 {
     })
 }
 
-fn to_result<T>(option: Option<T>) -> io::Result<T> {
-    option.ok_or(io::Error::new(
-        io::ErrorKind::UnexpectedEof,
-        "There is no more token to parse.",
-    ))
+fn to_result<T>(option: Option<T>) -> anyhow::Result<T> {
+    option.ok_or(anyhow!("There is no more token to parse."))
 }

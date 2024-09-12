@@ -1,10 +1,10 @@
-use std::{fs::remove_dir_all, io};
+use std::fs::remove_dir_all;
 
 use crate::config::{DependencyConfig, LoadConfig, ProjectConfig};
 
 use super::get_project_path;
 
-pub fn clean(config_file: String) -> io::Result<()> {
+pub fn clean(config_file: String) -> anyhow::Result<()> {
     let (project_path, project_config_path) = &get_project_path(&config_file);
 
     match ProjectConfig::load(project_config_path) {
@@ -47,9 +47,9 @@ pub fn clean(config_file: String) -> io::Result<()> {
 
                 clean(project_path.join(path).to_string_lossy().to_string())?;
             }
-
-            Ok(())
         }
-        Err(error) => ProjectConfig::handle_error(error, project_config_path),
+        Err(error) => ProjectConfig::handle_error(error, project_config_path)?,
     }
+
+    Ok(())
 }

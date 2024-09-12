@@ -1,5 +1,5 @@
 use std::{
-    io::{self, Read, Write},
+    io::{Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
 };
@@ -24,7 +24,7 @@ pub fn compiling(
     new_hash_hashmap: &mut HashMap<PathBuf, Hash>,
     flags: &BuildFlags,
     stderr: &mut impl Write,
-) -> io::Result<()> {
+) -> anyhow::Result<()> {
     let mut compile_progress_bar_option = if flags.pretty && files_to_compile.len() > 0 {
         let mut compile_progress_bar = RichProgress::new(
             tqdm!(total = files_to_compile.len()),

@@ -1,7 +1,7 @@
 use std::{
     env,
     fs::create_dir_all,
-    io::{self, Read, Write},
+    io::{Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
 };
@@ -31,7 +31,7 @@ pub fn linking(
     mut new_hash_hashmap: HashMap<PathBuf, Hash>,
     flags: &BuildFlags,
     stderr: &mut impl Write,
-) -> io::Result<()> {
+) -> anyhow::Result<()> {
     let mut link_progress_bar_option = if flags.pretty && files_to_link.len() > 0 {
         let mut link_progress_bar = RichProgress::new(
             tqdm!(total = files_to_link.len()),
@@ -173,7 +173,7 @@ pub fn linking(
                 o_c_link,
             )))
         })
-        .collect::<Vec<io::Result<Option<(&PathBuf, Child, Vec<(String, String)>)>>>>();
+        .collect::<Vec<anyhow::Result<Option<(&PathBuf, Child, Vec<(String, String)>)>>>>();
 
     let mut errors = Vec::new();
 

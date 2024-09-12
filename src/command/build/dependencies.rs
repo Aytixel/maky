@@ -28,7 +28,7 @@ pub fn dependencies(
     project_config: &mut ProjectConfig,
     flags: &BuildFlags,
     stderr: &mut impl Write,
-) -> io::Result<()> {
+) -> anyhow::Result<()> {
     let mut dependencies_progress_bar_option =
         if flags.pretty && project_config.dependencies.len() > 0 {
             let mut dependencies_progress_bar = RichProgress::new(
@@ -159,7 +159,7 @@ pub fn dependencies(
 
             Ok(Ok((dependency_name, dependency_path)))
         })
-        .collect::<Vec<io::Result<Result<(&String, PathBuf), (String, String)>>>>();
+        .collect::<Vec<anyhow::Result<Result<(&String, PathBuf), (String, String)>>>>();
 
     let mut errors = Vec::new();
     let binaries_path = add_mode_path(&project_config.binaries, flags.release);

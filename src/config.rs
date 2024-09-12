@@ -88,9 +88,11 @@ impl ProjectConfig {
     pub fn get_compiler(&self, file: &Path) -> Option<String> {
         file.extension()
             .map(|extention| match get_language(extention) {
-                Language::C => self.c_compiler.clone(),
-                Language::Cpp => self.cpp_compiler.clone(),
+                Language::C => Some(self.c_compiler.clone()),
+                Language::Cpp => Some(self.cpp_compiler.clone()),
+                Language::Other => None,
             })
+            .flatten()
     }
 
     pub fn handle_error(error: io::Error, project_config_path: &Path) -> io::Result<()> {

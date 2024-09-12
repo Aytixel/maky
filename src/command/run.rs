@@ -1,6 +1,6 @@
 use std::{
     env,
-    io::{self, stderr, stdout},
+    io::{stderr, stdout},
     path::PathBuf,
     process::{Command, Stdio},
 };
@@ -20,7 +20,7 @@ pub fn run(
     rebuild: bool,
     file: PathBuf,
     args: Vec<String>,
-) -> io::Result<()> {
+) -> anyhow::Result<()> {
     build(
         config_file.clone(),
         &BuildFlags {
