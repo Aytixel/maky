@@ -17,7 +17,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
     command::{add_mode_path, get_project_path},
-    config::{DependencyConfig, LibConfig, LoadConfig, ProjectConfig},
+    config::{DependencyConfig, LibConfig, ProjectConfig},
     file::scan_dir_dependency,
 };
 

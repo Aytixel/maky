@@ -17,7 +17,7 @@ use tokio::{
 };
 
 use crate::{
-    config::{LoadConfig, ProjectConfig},
+    config::ProjectConfig,
     file::{get_includes, get_language, Language},
 };
 

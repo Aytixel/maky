@@ -18,7 +18,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{
     command::add_mode_path,
-    config::{ProjectConfig, SaveConfig},
+    config::{ProjectConfig, SaveHash},
 };
 
 use super::BuildFlags;
@@ -207,7 +207,7 @@ pub fn linking(
         }
     }
 
-    new_hash_hashmap.save(project_path)?;
+    new_hash_hashmap.save(project_path, flags.release)?;
 
     if let Some(link_progress_bar) = &mut link_progress_bar_option {
         link_progress_bar.columns.drain(1..6);

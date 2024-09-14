@@ -10,7 +10,7 @@ use crossterm::{
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
 
-use crate::config::{LoadConfig, ProjectConfig};
+use crate::config::ProjectConfig;
 
 use super::{add_mode_path, build, get_project_path, BuildFlags};
 

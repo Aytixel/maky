@@ -21,16 +21,6 @@ use crate::{
     pkg_config::ParsePkgVersion,
 };
 
-pub trait LoadConfig {
-    fn load(path: &Path) -> io::Result<Self>
-    where
-        Self: Sized;
-}
-
-pub trait SaveConfig {
-    fn save(&self, path: &Path) -> io::Result<()>;
-}
-
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ProjectConfig {
@@ -301,10 +291,8 @@ impl ProjectConfig {
             library_config.includes = includes;
         }
     }
-}
 
-impl LoadConfig for ProjectConfig {
-    fn load(file_path: &Path) -> io::Result<Self> {
+    pub fn load(file_path: &Path) -> io::Result<Self> {
         let mut project_config: ProjectConfig = toml::from_str(&read_to_string(file_path)?)
             .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
 
@@ -401,9 +389,22 @@ impl LibConfig {
     }
 }
 
-impl LoadConfig for HashMap<PathBuf, Hash> {
-    fn load(project_path: &Path) -> io::Result<Self> {
-        let hash_file = read_to_string(project_path.join(".maky/hash"))?;
+fn get_hash_path(project_path: &Path, release: bool) -> PathBuf {
+    project_path.join(format!(
+        ".maky/{}_hash",
+        release.then_some("release").unwrap_or("debug")
+    ))
+}
+
+pub trait LoadHash {
+    fn load(path: &Path, release: bool) -> io::Result<Self>
+    where
+        Self: Sized;
+}
+
+impl LoadHash for HashMap<PathBuf, Hash> {
+    fn load(project_path: &Path, release: bool) -> io::Result<Self> {
+        let hash_file = read_to_string(get_hash_path(project_path, release))?;
         let mut hash_hashmap = HashMap::new();
         let mut hash_path = Path::new("");
 
@@ -421,8 +422,12 @@ impl LoadConfig for HashMap<PathBuf, Hash> {
     }
 }
 
-impl SaveConfig for HashMap<PathBuf, Hash> {
-    fn save(&self, project_path: &Path) -> io::Result<()> {
+pub trait SaveHash {
+    fn save(&self, path: &Path, release: bool) -> io::Result<()>;
+}
+
+impl SaveHash for HashMap<PathBuf, Hash> {
+    fn save(&self, project_path: &Path, release: bool) -> io::Result<()> {
         let mut data = Vec::new();
 
         for hash in self {
@@ -441,7 +446,7 @@ impl SaveConfig for HashMap<PathBuf, Hash> {
             );
         }
 
-        write(project_path.join("./.maky/hash"), data)
+        write(get_hash_path(project_path, release), data)
     }
 }
 

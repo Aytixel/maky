@@ -1,6 +1,6 @@
 use std::fs::remove_dir_all;
 
-use crate::config::{DependencyConfig, LoadConfig, ProjectConfig};
+use crate::config::{DependencyConfig, ProjectConfig};
 
 use super::get_project_path;
 

@@ -16,7 +16,7 @@ use crossterm::{
 use hashbrown::HashMap;
 
 use crate::{
-    config::{LoadConfig, ProjectConfig},
+    config::{LoadHash, ProjectConfig},
     file::{compile::compile, link::link, scan_dir},
 };
 
@@ -121,7 +121,7 @@ pub fn build(
 
                 HashMap::new()
             } else {
-                HashMap::load(project_path).unwrap_or_default()
+                HashMap::load(project_path, flags.release).unwrap_or_default()
             };
             let mut new_hash_hashmap = HashMap::new();
             let mut main_hashmap = HashMap::new();
