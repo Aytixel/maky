@@ -190,9 +190,9 @@ pub fn build(
                     Print("    Finished ".bold()),
                     ResetColor,
                     Print(if flags.release {
-                        "release [optimized]"
+                        "`release` profile [optimized]"
                     } else {
-                        "dev [unoptimized + debuginfo]"
+                        "`dev` profile [unoptimized + debuginfo]"
                     }),
                     Print(format!(" target(s) in {:.2?}\n", time.elapsed()))
                 )?;
