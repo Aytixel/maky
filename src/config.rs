@@ -12,7 +12,8 @@ use crossterm::{
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
 };
 use hashbrown::{HashMap, HashSet};
-use serde::{Deserialize, Serialize};
+use semver::{Version, VersionReq};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{formats::PreferOne, serde_as, OneOrMany};
 use string_template::Template;
 
@@ -24,6 +25,10 @@ use crate::{
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ProjectConfig {
+    #[serde(serialize_with = "ProjectConfig::serialize_version")]
+    #[serde(deserialize_with = "ProjectConfig::deserialize_version")]
+    pub version: Version,
+
     #[serde(default = "ProjectConfig::default_c_compiler")]
     #[serde(alias = "cc")]
     pub c_compiler: String,
@@ -136,6 +141,22 @@ impl ProjectConfig {
 
     fn default_hashmap<T>() -> HashMap<String, T> {
         HashMap::new()
+    }
+
+    fn serialize_version<S>(version: &Version, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&version.to_string())
+    }
+
+    fn deserialize_version<'de, D>(deserializer: D) -> Result<Version, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let version = String::deserialize(deserializer)?;
+
+        Ok(Version::parse(&version).expect("Malformed version in config"))
     }
 
     fn merge_specific_config(&mut self) {
@@ -292,9 +313,13 @@ impl ProjectConfig {
         }
     }
 
+    pub fn load_without_processing(file_path: &Path) -> io::Result<Self> {
+        toml::from_str(&read_to_string(file_path)?)
+            .map_err(|error| io::Error::new(io::ErrorKind::Other, error))
+    }
+
     pub fn load(file_path: &Path) -> io::Result<Self> {
-        let mut project_config: ProjectConfig = toml::from_str(&read_to_string(file_path)?)
-            .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
+        let mut project_config = ProjectConfig::load_without_processing(file_path)?;
 
         project_config.merge_specific_config();
 
@@ -325,8 +350,48 @@ impl ProjectConfig {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
 pub enum DependencyConfig {
-    Local { path: PathBuf },
-    Git { git: String, rev: Option<String> },
+    Local {
+        #[serde(serialize_with = "DependencyConfig::serialize_version_req")]
+        #[serde(deserialize_with = "DependencyConfig::deserialize_version_req")]
+        #[serde(default)]
+        version: Option<VersionReq>,
+        path: PathBuf,
+    },
+    Git {
+        #[serde(serialize_with = "DependencyConfig::serialize_version_req")]
+        #[serde(deserialize_with = "DependencyConfig::deserialize_version_req")]
+        #[serde(default)]
+        version: Option<VersionReq>,
+        git: String,
+        rev: Option<String>,
+    },
+}
+
+impl DependencyConfig {
+    fn serialize_version_req<S>(
+        version_req: &Option<VersionReq>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if let Some(version_req) = version_req {
+            serializer.serialize_some(&version_req.to_string())
+        } else {
+            serializer.serialize_none()
+        }
+    }
+
+    fn deserialize_version_req<'de, D>(deserializer: D) -> Result<Option<VersionReq>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let version_req = Option::<String>::deserialize(deserializer)?;
+
+        Ok(version_req.map(|version_req| {
+            VersionReq::parse(&version_req).expect("Malformed version requirement in config")
+        }))
+    }
 }
 
 #[serde_as]

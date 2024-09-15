@@ -15,7 +15,7 @@ pub fn init(path: Option<PathBuf>) -> anyhow::Result<()> {
 
         create_dir(project_path.join("src")).ok();
         write(project_path.join(".gitignore"), "/.maky\n/obj\n/bin").ok();
-        write(project_path.join("Maky.toml"), "").ok();
+        write(project_path.join("Maky.toml"), "version = \"0.1.0\"").ok();
         write(project_path.join("src/main.c"), "#include <stdio.h>\n\nint main()\n{\n\tprintf(\"Hello world !\\n\");\n\n\treturn 0;\n}").ok();
     }
 

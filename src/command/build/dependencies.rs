@@ -64,9 +64,9 @@ pub fn dependencies(
         .dependencies
         .par_iter()
         .map(|(dependency_name, dependency_config)| {
-            let dependency_path = match dependency_config {
-                DependencyConfig::Local { path } => project_path.join(path),
-                DependencyConfig::Git { git, rev } => {
+            let (version, dependency_path) = match dependency_config {
+                DependencyConfig::Local { version, path } => (version, project_path.join(path)),
+                DependencyConfig::Git { version, git, rev } => {
                     let mut git_errors = Vec::new();
                     let git_url = GitUrl::parse(git)
                         .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
@@ -134,9 +134,26 @@ pub fn dependencies(
                         )));
                     }
 
-                    project_dependency_path
+                    (version, project_dependency_path)
                 }
             };
+
+            let (dependency_path, dependency_config_path) =
+                get_project_path(&dependency_path.to_string_lossy());
+            let dependency_config = ProjectConfig::load(&dependency_config_path)?;
+
+            if let Some(version_req) = version {
+                if !version_req.matches(&dependency_config.version) {
+                    return Ok(Err((
+                        dependency_name.clone(),
+                        format!(
+                            "version not matching, current is {} and required is {version_req}",
+                            dependency_config.version
+                        ),
+                    )));
+                }
+            }
+
             let mut stderr_buffer = Vec::new();
 
             build(
@@ -157,9 +174,9 @@ pub fn dependencies(
                 )));
             }
 
-            Ok(Ok((dependency_name, dependency_path)))
+            Ok(Ok((dependency_name, dependency_path, dependency_config)))
         })
-        .collect::<Vec<anyhow::Result<Result<(&String, PathBuf), (String, String)>>>>();
+        .collect::<Vec<anyhow::Result<Result<(&String, PathBuf, ProjectConfig), (String, String)>>>>();
 
     let mut errors = Vec::new();
     let binaries_path = add_mode_path(&project_config.binaries, flags.release);
@@ -168,7 +185,7 @@ pub fn dependencies(
     remove_dir_all(project_path.join(".maky/include")).ok();
 
     for command in commands.into_iter() {
-        let (dependency_name, dependency_path) = match command? {
+        let (dependency_name, dependency_path, mut dependency_config) = match command? {
             Ok(command) => command,
             Err((dependency_name, error)) => {
                 errors.push((dependency_name, error));
@@ -188,63 +205,61 @@ pub fn dependencies(
 
         create_dir_all(&project_include_path)?;
 
-        let (dependency_path, dependency_config_path) =
-            &get_project_path(&dependency_path.to_string_lossy());
+        dependency_config.includes.extend(dependency_config.sources);
 
-        if let Ok(mut dependency_config) = ProjectConfig::load(dependency_config_path) {
-            dependency_config.includes.extend(dependency_config.sources);
+        for (_, library) in dependency_config.libraries.into_iter() {
+            dependency_config.includes.extend(library.includes);
+        }
 
-            for (_, library) in dependency_config.libraries.into_iter() {
-                dependency_config.includes.extend(library.includes);
-            }
+        for include in dependency_config.includes {
+            let include_path = dependency_path.join(include);
 
-            for include in dependency_config.includes {
-                let include_path = dependency_path.join(include);
-
-                if include_path.is_dir() {
-                    for h_file in scan_dir_dependency(&include_path)? {
-                        hard_link(
-                            &h_file,
-                            project_include_path.join(h_file.strip_prefix(&include_path).unwrap()),
-                        )?;
-                    }
+            if include_path.is_dir() {
+                for h_file in scan_dir_dependency(&include_path)? {
+                    hard_link(
+                        &h_file,
+                        project_include_path.join(h_file.strip_prefix(&include_path).unwrap()),
+                    )?;
                 }
             }
+        }
 
-            for entry in add_mode_path(
-                &dependency_path.join(dependency_config.binaries),
-                flags.release,
-            )
-            .read_dir()?
-            {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
+        for entry in add_mode_path(
+            &dependency_path.join(dependency_config.binaries),
+            flags.release,
+        )
+        .read_dir()?
+        {
+            if let Ok(entry) = entry {
+                let path = entry.path();
 
-                    if let Some(true) = path.file_name().map(|file_name| {
-                        file_name
-                            .to_string_lossy()
-                            .contains(env::consts::DLL_SUFFIX)
-                    }) {
-                        create_dir_all(&project_binaries_path)?;
+                if let Some(true) = path.file_name().map(|file_name| {
+                    file_name
+                        .to_string_lossy()
+                        .contains(env::consts::DLL_SUFFIX)
+                }) {
+                    create_dir_all(&project_binaries_path)?;
 
-                        let link = project_binaries_path.join(path.file_name().unwrap());
+                    let link = project_binaries_path.join(path.file_name().unwrap());
 
-                        remove_file(&link).ok();
-                        hard_link(&path, link)?;
+                    remove_file(&link).ok();
+                    hard_link(&path, link)?;
 
-                        let lib_name = path.file_stem().unwrap().to_string_lossy();
-                        let lib_name = lib_name.strip_prefix("lib").unwrap_or(&lib_name);
-                        let lib_config = LibConfig {
-                            library: vec![lib_name.to_string()],
-                            directories: vec![binaries_path.clone()],
-                            includes: Vec::new(),
-                            pkg_config: HashMap::new(),
-                        };
+                    let lib_name = path.file_stem().unwrap().to_string_lossy();
+                    let lib_name = lib_name.strip_prefix("lib").unwrap_or(&lib_name);
+                    let lib_config = LibConfig {
+                        library: vec![lib_name.to_string()],
+                        directories: vec![binaries_path.clone()],
+                        includes: Vec::new(),
+                        pkg_config: HashMap::new(),
+                    };
+                    let mut lib_name_split: Vec<&str> = lib_name.split("_").collect();
 
-                        project_config
-                            .libraries
-                            .insert(format!("{dependency_name}/{lib_name}"), lib_config);
-                    }
+                    lib_name_split.pop();
+                    project_config.libraries.insert(
+                        format!("{dependency_name}/{}", lib_name_split.join("_")),
+                        lib_config,
+                    );
                 }
             }
         }

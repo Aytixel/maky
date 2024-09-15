@@ -41,7 +41,7 @@ pub fn clean(config_file: String) -> anyhow::Result<()> {
             }
 
             for dependency_config in project_config.dependencies.values() {
-                let DependencyConfig::Local { path } = dependency_config else {
+                let DependencyConfig::Local { path, .. } = dependency_config else {
                     continue;
                 };
 

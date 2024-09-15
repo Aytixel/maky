@@ -158,8 +158,12 @@ pub fn linking(
                 .unwrap_or(file.file_stem().unwrap().to_string_lossy().to_string());
 
             if *is_library {
-                output_file = output_path.join(env::consts::DLL_PREFIX.to_string() + &name);
-                output_file.set_extension(env::consts::DLL_EXTENSION);
+                output_file = output_path.join(format!(
+                    "{}{name}_{}.{}",
+                    env::consts::DLL_PREFIX,
+                    project_config.version,
+                    env::consts::DLL_EXTENSION
+                ));
             } else {
                 output_file = output_path.join(name);
                 output_file.set_extension(env::consts::EXE_EXTENSION);
