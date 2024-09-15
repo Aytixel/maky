@@ -3,12 +3,13 @@ mod dependencies;
 mod linking;
 
 use std::{
-    fs::{create_dir, create_dir_all, read_dir, remove_dir, remove_file},
+    fs::{create_dir, create_dir_all, read, read_dir, remove_dir, remove_file},
     io::{stdout, Write},
     path::Path,
     time::Instant,
 };
 
+use blake3::hash;
 use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor, Stylize},
@@ -144,6 +145,18 @@ pub fn build(
                     &mut c_h_link,
                     &mut new_hash_hashmap,
                 )?;
+            }
+
+            let project_config_hash = hash(&read(project_config_path)?);
+
+            new_hash_hashmap.insert(project_config_path.to_owned(), project_config_hash);
+
+            if hash_hashmap
+                .get(project_config_path)
+                .map(|hash| hash != &project_config_hash)
+                .unwrap_or(true)
+            {
+                hash_hashmap.clear();
             }
 
             let files_to_compile = compile(
