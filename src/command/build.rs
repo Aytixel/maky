@@ -38,7 +38,7 @@ pub fn build(
     config_file: String,
     flags: &BuildFlags,
     stderr: &mut impl Write,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<bool> {
     let (project_path, project_config_path) = &get_project_path(&config_file);
     let time = Instant::now();
 
@@ -66,152 +66,165 @@ pub fn build(
         )?;
     }
 
-    match ProjectConfig::load(project_config_path) {
-        Ok(mut project_config) => {
-            let dir_path = project_path.join("./.maky");
-            if !dir_path.is_dir() {
-                create_dir(dir_path)?;
-            }
+    let mut project_config = match ProjectConfig::load(project_config_path) {
+        Ok(project_config) => project_config,
+        Err(error) => {
+            ProjectConfig::handle_error(error, project_config_path)?;
 
-            let binaries_dir_path = project_path.join(&project_config.binaries);
-            if !binaries_dir_path.is_dir() {
-                create_dir(&binaries_dir_path)?;
-            }
+            return Ok(true);
+        }
+    };
 
-            for source in project_config.sources.iter() {
-                let sources_dir_path = project_path.join(source);
-                if !sources_dir_path.is_dir() {
-                    create_dir(sources_dir_path)?;
-                }
+    let dir_path = project_path.join("./.maky");
+    if !dir_path.is_dir() {
+        create_dir(dir_path)?;
+    }
 
-                project_config.includes.push(source.clone());
-            }
+    let binaries_dir_path = project_path.join(&project_config.binaries);
+    if !binaries_dir_path.is_dir() {
+        create_dir(&binaries_dir_path)?;
+    }
 
-            let objects_dir_path =
-                add_mode_path(&project_path.join(&project_config.objects), flags.release);
-            if !objects_dir_path.is_dir() {
-                create_dir_all(&objects_dir_path)?;
-            }
+    for source in project_config.sources.iter() {
+        let sources_dir_path = project_path.join(source);
+        if !sources_dir_path.is_dir() {
+            create_dir(sources_dir_path)?;
+        }
 
-            for library in project_config.libraries.values() {
-                project_config.includes.extend_from_slice(&library.includes);
-            }
+        project_config.includes.push(source.clone());
+    }
 
-            project_config
-                .includes
-                .push(Path::new(".maky/include").to_path_buf());
+    let objects_dir_path =
+        add_mode_path(&project_path.join(&project_config.objects), flags.release);
+    if !objects_dir_path.is_dir() {
+        create_dir_all(&objects_dir_path)?;
+    }
 
-            if cfg!(target_os = "linux") {
-                project_config.includes.push("/usr/include".into());
-            }
+    for library in project_config.libraries.values() {
+        project_config.includes.extend_from_slice(&library.includes);
+    }
 
-            dependencies(project_path, &mut project_config, flags, stderr)?;
+    project_config
+        .includes
+        .push(Path::new(".maky/include").to_path_buf());
 
-            let mut hash_hashmap = if flags.rebuild {
-                for entry in read_dir(&objects_dir_path)? {
-                    if let Ok(entry) = entry {
-                        let path = entry.path();
+    if cfg!(target_os = "linux") {
+        project_config.includes.push("/usr/include".into());
+    }
 
-                        if path.is_file() {
-                            remove_file(path)?;
-                        } else if path.is_dir() {
-                            remove_dir(path)?;
-                        }
-                    }
-                }
+    let need_rebuild = dependencies(project_path, &mut project_config, flags, stderr)?;
+    let mut hash_hashmap = if flags.rebuild || need_rebuild {
+        remove_objects(&objects_dir_path)?;
 
-                HashMap::new()
+        HashMap::new()
+    } else {
+        HashMap::load(project_path, flags.release).unwrap_or_default()
+    };
+    let mut new_hash_hashmap = HashMap::new();
+    let mut main_hashmap = HashMap::new();
+    let mut lib_hashmap = HashMap::new();
+    let mut import_hashmap = HashMap::new();
+    let mut h_h_link = HashMap::new();
+    let mut h_c_link = HashMap::new();
+    let mut c_h_link = HashMap::new();
+
+    for source in project_config.sources.iter() {
+        scan_dir(
+            project_path,
+            &project_config,
+            &project_path.join(source),
+            &mut main_hashmap,
+            &mut lib_hashmap,
+            &mut import_hashmap,
+            &mut h_h_link,
+            &mut h_c_link,
+            &mut c_h_link,
+            &mut new_hash_hashmap,
+        )?;
+    }
+
+    let project_config_hash = hash(&read(project_config_path)?);
+
+    new_hash_hashmap.insert(project_config_path.to_owned(), project_config_hash);
+
+    if hash_hashmap
+        .get(project_config_path)
+        .map(|hash| hash != &project_config_hash)
+        .unwrap_or(true)
+    {
+        remove_objects(&objects_dir_path)?;
+
+        hash_hashmap.clear();
+    }
+
+    let is_rebuilding = new_hash_hashmap != hash_hashmap;
+
+    let files_to_compile = compile(
+        &objects_dir_path,
+        &h_h_link,
+        &h_c_link,
+        &mut hash_hashmap,
+        &new_hash_hashmap,
+    );
+
+    compiling(
+        project_path,
+        &project_config,
+        &files_to_compile,
+        &mut new_hash_hashmap,
+        flags,
+        stderr,
+    )?;
+
+    let files_to_link = link(
+        project_path,
+        &project_config,
+        &main_hashmap,
+        &lib_hashmap,
+        &files_to_compile,
+        &h_c_link,
+        &c_h_link,
+    )?;
+
+    linking(
+        project_path,
+        &project_config,
+        &import_hashmap,
+        &files_to_link,
+        new_hash_hashmap,
+        flags,
+        stderr,
+    )?;
+
+    if flags.pretty {
+        execute!(
+            stdout(),
+            SetForegroundColor(Color::DarkGreen),
+            Print("    Finished ".bold()),
+            ResetColor,
+            Print(if flags.release {
+                "`release` profile [optimized]"
             } else {
-                HashMap::load(project_path, flags.release).unwrap_or_default()
-            };
-            let mut new_hash_hashmap = HashMap::new();
-            let mut main_hashmap = HashMap::new();
-            let mut lib_hashmap = HashMap::new();
-            let mut import_hashmap = HashMap::new();
-            let mut h_h_link = HashMap::new();
-            let mut h_c_link = HashMap::new();
-            let mut c_h_link = HashMap::new();
+                "`dev` profile [unoptimized + debuginfo]"
+            }),
+            Print(format!(" target(s) in {:.2?}\n", time.elapsed()))
+        )?;
+    }
 
-            for source in project_config.sources.iter() {
-                scan_dir(
-                    project_path,
-                    &project_config,
-                    &project_path.join(source),
-                    &mut main_hashmap,
-                    &mut lib_hashmap,
-                    &mut import_hashmap,
-                    &mut h_h_link,
-                    &mut h_c_link,
-                    &mut c_h_link,
-                    &mut new_hash_hashmap,
-                )?;
-            }
+    Ok(is_rebuilding)
+}
 
-            let project_config_hash = hash(&read(project_config_path)?);
+fn remove_objects(objects_dir_path: &Path) -> anyhow::Result<()> {
+    for entry in read_dir(&objects_dir_path)? {
+        if let Ok(entry) = entry {
+            let path = entry.path();
 
-            new_hash_hashmap.insert(project_config_path.to_owned(), project_config_hash);
-
-            if hash_hashmap
-                .get(project_config_path)
-                .map(|hash| hash != &project_config_hash)
-                .unwrap_or(true)
-            {
-                hash_hashmap.clear();
-            }
-
-            let files_to_compile = compile(
-                &objects_dir_path,
-                &h_h_link,
-                &h_c_link,
-                &mut hash_hashmap,
-                &new_hash_hashmap,
-            );
-
-            compiling(
-                project_path,
-                &project_config,
-                &files_to_compile,
-                &mut new_hash_hashmap,
-                flags,
-                stderr,
-            )?;
-
-            let files_to_link = link(
-                project_path,
-                &project_config,
-                &main_hashmap,
-                &lib_hashmap,
-                &files_to_compile,
-                &h_c_link,
-                &c_h_link,
-            )?;
-
-            linking(
-                project_path,
-                &project_config,
-                &import_hashmap,
-                &files_to_link,
-                new_hash_hashmap,
-                flags,
-                stderr,
-            )?;
-
-            if flags.pretty {
-                execute!(
-                    stdout(),
-                    SetForegroundColor(Color::DarkGreen),
-                    Print("    Finished ".bold()),
-                    ResetColor,
-                    Print(if flags.release {
-                        "`release` profile [optimized]"
-                    } else {
-                        "`dev` profile [unoptimized + debuginfo]"
-                    }),
-                    Print(format!(" target(s) in {:.2?}\n", time.elapsed()))
-                )?;
+            if path.is_file() {
+                remove_file(path)?;
+            } else if path.is_dir() {
+                remove_dir(path)?;
             }
         }
-        Err(error) => ProjectConfig::handle_error(error, project_config_path)?,
     }
 
     Ok(())

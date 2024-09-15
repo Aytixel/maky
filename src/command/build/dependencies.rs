@@ -28,7 +28,7 @@ pub fn dependencies(
     project_config: &mut ProjectConfig,
     flags: &BuildFlags,
     stderr: &mut impl Write,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<bool> {
     let mut dependencies_progress_bar_option =
         if flags.pretty && project_config.dependencies.len() > 0 {
             let mut dependencies_progress_bar = RichProgress::new(
@@ -155,8 +155,7 @@ pub fn dependencies(
             }
 
             let mut stderr_buffer = Vec::new();
-
-            build(
+            let has_rebuild = build(
                 dependency_path.to_string_lossy().to_string(),
                 &{
                     let mut flags = flags.clone();
@@ -174,9 +173,9 @@ pub fn dependencies(
                 )));
             }
 
-            Ok(Ok((dependency_name, dependency_path, dependency_config)))
+            Ok(Ok((dependency_name, dependency_path, dependency_config, has_rebuild)))
         })
-        .collect::<Vec<anyhow::Result<Result<(&String, PathBuf, ProjectConfig), (String, String)>>>>();
+        .collect::<Vec<anyhow::Result<Result<(&String, PathBuf, ProjectConfig, bool), (String, String)>>>>();
 
     let mut errors = Vec::new();
     let binaries_path = add_mode_path(&project_config.binaries, flags.release);
@@ -184,8 +183,16 @@ pub fn dependencies(
 
     remove_dir_all(project_path.join(".maky/include")).ok();
 
+    let has_rebuild = commands.iter().any(|command| {
+        if let Ok(Ok((_, _, _, true))) = command {
+            true
+        } else {
+            false
+        }
+    });
+
     for command in commands.into_iter() {
-        let (dependency_name, dependency_path, mut dependency_config) = match command? {
+        let (dependency_name, dependency_path, mut dependency_config, _) = match command? {
             Ok(command) => command,
             Err((dependency_name, error)) => {
                 errors.push((dependency_name, error));
@@ -300,5 +307,5 @@ pub fn dependencies(
         }
     }
 
-    Ok(())
+    Ok(has_rebuild)
 }

@@ -101,15 +101,17 @@ async fn main() -> anyhow::Result<()> {
                 release,
                 rebuild,
                 pretty,
-            } => build(
-                config_file,
-                &BuildFlags {
-                    release,
-                    rebuild,
-                    pretty,
-                },
-                &mut stderr(),
-            )?,
+            } => {
+                build(
+                    config_file,
+                    &BuildFlags {
+                        release,
+                        rebuild,
+                        pretty,
+                    },
+                    &mut stderr(),
+                )?;
+            }
             Commands::Run {
                 config_file,
                 release,
