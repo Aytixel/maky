@@ -35,7 +35,10 @@ pub fn run(
 
     match ProjectConfig::load(project_config_path) {
         Ok(project_config) => {
-            let mut output_file = add_mode_path(&project_config.binaries, release).join(file);
+            let Some(package_config) = project_config.package else {
+                return Ok(());
+            };
+            let mut output_file = add_mode_path(&package_config.binaries, release).join(file);
 
             output_file.set_extension(env::consts::EXE_EXTENSION);
 

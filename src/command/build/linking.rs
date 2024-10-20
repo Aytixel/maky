@@ -18,7 +18,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{
     command::add_mode_path,
-    config::{ProjectConfig, SaveHash},
+    config::{hash::SaveHash, ProjectConfig},
 };
 
 use super::BuildFlags;
@@ -124,12 +124,13 @@ pub fn linking(
                 command.arg("--shared");
             }
 
+            let package = project_config.package.as_ref().unwrap();
             let mut o_c_link = Vec::new();
 
             for c_file in file_to_link {
                 if let Some(hash) = new_hash_hashmap.get(c_file) {
-                    let o_file = add_mode_path(&project_config.objects, flags.release)
-                        .join(hash.to_hex().as_str());
+                    let o_file =
+                        add_mode_path(&package.objects, flags.release).join(hash.to_hex().as_str());
 
                     command.arg(&o_file);
                     o_c_link.push((
@@ -151,7 +152,7 @@ pub fn linking(
                 }
             }
 
-            let output_path = add_mode_path(&project_config.binaries, flags.release);
+            let output_path = add_mode_path(&package.binaries, flags.release);
             let mut output_file;
             let name = name_option
                 .clone()
@@ -161,7 +162,7 @@ pub fn linking(
                 output_file = output_path.join(format!(
                     "{}{name}_{}.{}",
                     env::consts::DLL_PREFIX,
-                    project_config.version,
+                    package.version,
                     env::consts::DLL_EXTENSION
                 ));
             } else {

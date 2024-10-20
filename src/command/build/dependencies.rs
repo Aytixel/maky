@@ -17,7 +17,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
     command::{add_mode_path, get_project_path},
-    config::{DependencyConfig, LibConfig, ProjectConfig},
+    config::{dependency::DependencyConfig, lib::LibConfig, ProjectConfig},
     file::scan_dir_dependency,
 };
 
@@ -143,12 +143,12 @@ pub fn dependencies(
             let dependency_config = ProjectConfig::load(&dependency_config_path)?;
 
             if let Some(version_req) = version {
-                if !version_req.matches(&dependency_config.version) {
+                if !version_req.matches(&dependency_config.package.as_ref().unwrap().version) {
                     return Ok(Err((
                         dependency_name.clone(),
                         format!(
                             "version not matching, current is {} and required is {version_req}",
-                            dependency_config.version
+                            dependency_config.package.as_ref().unwrap().version
                         ),
                     )));
                 }
@@ -178,7 +178,10 @@ pub fn dependencies(
         .collect::<Vec<anyhow::Result<Result<(&String, PathBuf, ProjectConfig, bool), (String, String)>>>>();
 
     let mut errors = Vec::new();
-    let binaries_path = add_mode_path(&project_config.binaries, flags.release);
+    let binaries_path = add_mode_path(
+        &project_config.package.as_ref().unwrap().binaries,
+        flags.release,
+    );
     let project_binaries_path = project_path.join(&binaries_path);
 
     remove_dir_all(project_path.join(".maky/include")).ok();
@@ -212,13 +215,15 @@ pub fn dependencies(
 
         create_dir_all(&project_include_path)?;
 
-        dependency_config.includes.extend(dependency_config.sources);
+        let package = dependency_config.package.as_mut().unwrap();
+
+        package.includes.extend_from_slice(&package.sources);
 
         for (_, library) in dependency_config.libraries.into_iter() {
-            dependency_config.includes.extend(library.includes);
+            package.includes.extend(library.includes);
         }
 
-        for include in dependency_config.includes {
+        for include in &package.includes {
             let include_path = dependency_path.join(include);
 
             if include_path.is_dir() {
@@ -231,11 +236,8 @@ pub fn dependencies(
             }
         }
 
-        for entry in add_mode_path(
-            &dependency_path.join(dependency_config.binaries),
-            flags.release,
-        )
-        .read_dir()?
+        for entry in
+            add_mode_path(&dependency_path.join(&package.binaries), flags.release).read_dir()?
         {
             if let Ok(entry) = entry {
                 let path = entry.path();

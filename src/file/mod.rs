@@ -46,8 +46,12 @@ pub fn scan_dir(
                             format!("{} : {}", path.to_string_lossy(), error),
                         )
                     })?;
-                    let includes =
-                        get_includes(&path, project_path, &project_config.includes, code);
+                    let includes = get_includes(
+                        &path,
+                        project_path,
+                        &project_config.package.as_ref().unwrap().includes,
+                        code,
+                    );
 
                     if is_code_file(extension) {
                         c_h_link.insert(path.clone(), includes.clone());
@@ -161,12 +165,6 @@ pub fn get_includes(
 
         if code.len() > 2 {
             let path = Path::new(&code[1..code.len() - 1]);
-
-            if path.is_file() {
-                include_hashset.insert(path.to_path_buf());
-                continue 'main;
-            }
-
             let path_with_parent = parent_path.join(path);
 
             if path_with_parent.is_file() {

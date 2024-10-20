@@ -17,7 +17,7 @@ use crossterm::{
 use hashbrown::HashMap;
 
 use crate::{
-    config::{LoadHash, ProjectConfig},
+    config::{hash::LoadHash, ProjectConfig},
     file::{compile::compile, link::link, scan_dir},
 };
 
@@ -74,43 +74,48 @@ pub fn build(
             return Ok(true);
         }
     };
+    let Some(mut package_config) = project_config.package.clone() else {
+        return Ok(false);
+    };
 
     let dir_path = project_path.join("./.maky");
     if !dir_path.is_dir() {
         create_dir(dir_path)?;
     }
 
-    let binaries_dir_path = project_path.join(&project_config.binaries);
+    let binaries_dir_path = project_path.join(&package_config.binaries);
     if !binaries_dir_path.is_dir() {
         create_dir(&binaries_dir_path)?;
     }
 
-    for source in project_config.sources.iter() {
+    for source in package_config.sources.iter() {
         let sources_dir_path = project_path.join(source);
         if !sources_dir_path.is_dir() {
             create_dir(sources_dir_path)?;
         }
 
-        project_config.includes.push(source.clone());
+        package_config.includes.push(source.clone());
     }
 
     let objects_dir_path =
-        add_mode_path(&project_path.join(&project_config.objects), flags.release);
+        add_mode_path(&project_path.join(&package_config.objects), flags.release);
     if !objects_dir_path.is_dir() {
         create_dir_all(&objects_dir_path)?;
     }
 
     for library in project_config.libraries.values() {
-        project_config.includes.extend_from_slice(&library.includes);
+        package_config.includes.extend_from_slice(&library.includes);
     }
 
-    project_config
+    package_config
         .includes
         .push(Path::new(".maky/include").to_path_buf());
 
     if cfg!(target_os = "linux") {
-        project_config.includes.push("/usr/include".into());
+        package_config.includes.push("/usr/include".into());
     }
+
+    project_config.package = Some(package_config);
 
     let need_rebuild = dependencies(project_path, &mut project_config, flags, stderr)?;
     let mut hash_hashmap = if flags.rebuild || need_rebuild {
@@ -128,19 +133,21 @@ pub fn build(
     let mut h_c_link = HashMap::new();
     let mut c_h_link = HashMap::new();
 
-    for source in project_config.sources.iter() {
-        scan_dir(
-            project_path,
-            &project_config,
-            &project_path.join(source),
-            &mut main_hashmap,
-            &mut lib_hashmap,
-            &mut import_hashmap,
-            &mut h_h_link,
-            &mut h_c_link,
-            &mut c_h_link,
-            &mut new_hash_hashmap,
-        )?;
+    if let Some(package_config) = &project_config.package {
+        for source in package_config.sources.iter() {
+            scan_dir(
+                project_path,
+                &project_config,
+                &project_path.join(source),
+                &mut main_hashmap,
+                &mut lib_hashmap,
+                &mut import_hashmap,
+                &mut h_h_link,
+                &mut h_c_link,
+                &mut c_h_link,
+                &mut new_hash_hashmap,
+            )?;
+        }
     }
 
     let project_config_hash = hash(&read(project_config_path)?);

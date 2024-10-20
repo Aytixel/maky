@@ -54,7 +54,7 @@ pub fn compiling(
     let include_args = {
         let mut include_args = Vec::new();
 
-        for include in project_config.includes.iter() {
+        for include in project_config.package.as_ref().unwrap().includes.iter() {
             include_args.push("-I".to_string());
             include_args.push(include.to_string_lossy().to_string());
         }
@@ -74,7 +74,7 @@ pub fn compiling(
                 .arg("-fdiagnostics-color=always")
                 .arg("-fpic");
 
-            if let Some(standard) = project_config.standard.as_ref() {
+            if let Some(standard) = project_config.package.as_ref().unwrap().standard.as_ref() {
                 command.arg(format!("-std={standard}"));
             }
 
@@ -92,8 +92,11 @@ pub fn compiling(
                     .arg(file.strip_prefix(project_path).unwrap())
                     .arg("-o")
                     .arg(
-                        add_mode_path(&project_config.objects, flags.release)
-                            .join(file_hash.to_hex().as_str()),
+                        add_mode_path(
+                            &project_config.package.as_ref().unwrap().objects,
+                            flags.release,
+                        )
+                        .join(file_hash.to_hex().as_str()),
                     )
                     .spawn()
                     .unwrap(),

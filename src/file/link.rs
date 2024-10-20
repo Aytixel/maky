@@ -98,7 +98,12 @@ fn find_h(
         already_explored_h.insert(h_file.to_path_buf());
 
         let code = read_to_string(h_file)?;
-        let includes = get_includes(h_file, project_path, &project_config.includes, &code);
+        let includes = get_includes(
+            h_file,
+            project_path,
+            &project_config.package.as_ref().unwrap().includes,
+            &code,
+        );
 
         for include in includes {
             find_h(project_path, project_config, &include, already_explored_h)?;

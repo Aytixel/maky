@@ -42,18 +42,20 @@ pub async fn format(
 
         match ProjectConfig::load(project_config_path) {
             Ok(project_config) => {
-                let mut explored_path = HashSet::new();
+                if let Some(package) = project_config.package {
+                    let mut explored_path = HashSet::new();
 
-                for path in project_config.sources.iter() {
-                    format_dir(
-                        &mut join_set,
-                        &mut explored_path,
-                        &project_path.join(path),
-                        &project_path,
-                        &project_config.includes,
-                        format_options,
-                    )
-                    .await;
+                    for path in package.sources.iter() {
+                        format_dir(
+                            &mut join_set,
+                            &mut explored_path,
+                            &project_path.join(path),
+                            &project_path,
+                            &package.includes,
+                            format_options,
+                        )
+                        .await;
+                    }
                 }
             }
             Err(error) => ProjectConfig::handle_error(error, project_config_path)?,
