@@ -12,13 +12,11 @@ pub use format::*;
 pub use init::*;
 pub use run::*;
 
-pub fn add_mode_path(path: &Path, release: bool) -> PathBuf {
+pub fn add_build_mode(path: &Path, release: bool) -> PathBuf {
     path.join(if release { "release" } else { "debug" })
 }
 
-pub fn get_project_path(config_file: &str) -> (PathBuf, PathBuf) {
-    let project_config_path = Path::new(config_file);
-
+pub fn get_project_config_path(project_config_path: &Path) -> (PathBuf, PathBuf) {
     if project_config_path.is_dir() {
         return (
             project_config_path.to_path_buf(),
@@ -33,4 +31,11 @@ pub fn get_project_path(config_file: &str) -> (PathBuf, PathBuf) {
             .to_path_buf(),
         project_config_path.to_path_buf(),
     )
+}
+
+#[derive(clap::Args, Debug)]
+pub struct GlobalArguments {
+    /// Maky config file or folder
+    #[arg(short = 'f', long = "file", default_value = "./Maky.toml")]
+    config_file: PathBuf,
 }
