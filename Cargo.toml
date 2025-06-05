@@ -8,8 +8,10 @@ authors = ["Aytixel"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+serde_with = "3"
+serde-inline-default = "0.2"
 toml = "0.8"
-semver = "1"
+semver = { version = "1", features = ["serde"] }
 
 clap = { version = "4", features = ["derive"] }
 crossterm = "0.26"
@@ -24,8 +26,13 @@ git2 = "0.20"
 parse-git-url = "0.5"
 
 blake3 = "1"
-which = "7"
+which = "8"
 glob = "0.3"
 async-walkdir = "2"
 
-tokio = { version = "1", features = ["fs", "macros", "rt-multi-thread"] }
+tokio = { version = "1", features = [
+    "fs",
+    "process",
+    "macros",
+    "rt-multi-thread",
+] }
