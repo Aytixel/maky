@@ -12,6 +12,8 @@ use which::which;
 #[serde_inline_default]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Package {
+    pub name: String,
+
     pub version: Version,
 
     /// C compiler config

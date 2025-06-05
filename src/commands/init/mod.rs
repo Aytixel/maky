@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    ffi::OsStr,
+    path::{Path, PathBuf},
+};
 
 use anyhow::anyhow;
 use git2::Repository;
@@ -19,27 +22,27 @@ pub async fn execute(args: Args) -> anyhow::Result<()> {
     } else {
         create_dir_all(&args.path).await?;
 
+        let path = args.path.canonicalize()?;
+
         if !Path::new(".git").exists() {
-            Repository::init(&args.path)?;
+            Repository::init(&path)?;
         }
 
-        create_dir(args.path.join("src")).await.ok();
+        create_dir(path.join("src")).await.ok();
+        write(path.join(".gitignore"), include_str!("./assets/.gitignore")).await?;
         write(
-            args.path.join(".gitignore"),
-            include_str!("./assets/.gitignore"),
-        )
-        .await?;
-        write(
-            args.path.join("Maky.toml"),
-            include_str!("./assets/Maky.toml"),
+            path.join("Maky.toml"),
+            include_str!("./assets/Maky.toml").replace(
+                "{{name}}",
+                &path
+                    .file_stem()
+                    .map(OsStr::to_string_lossy)
+                    .ok_or(anyhow!("can't create project name from directory"))?,
+            ),
         )
         .await?;
 
-        write(
-            args.path.join("src/main.c"),
-            include_str!("./assets/main.c"),
-        )
-        .await?;
+        write(path.join("src/main.c"), include_str!("./assets/main.c")).await?;
 
         Ok(())
     }
