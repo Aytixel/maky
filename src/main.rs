@@ -11,7 +11,7 @@ use crossterm::{
 };
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about, long_about = None, styles=get_styles())]
 struct Command {
     #[command(subcommand)]
     subcommand: SubCommand,
@@ -76,4 +76,34 @@ async fn execute_command() -> anyhow::Result<()> {
     }
 
     return Ok(());
+}
+
+pub fn get_styles() -> clap::builder::Styles {
+    clap::builder::Styles::styled()
+        .usage(clap::builder::styling::Style::new().bold().fg_color(Some(
+            clap::builder::styling::Color::Ansi(clap::builder::styling::AnsiColor::Green),
+        )))
+        .header(clap::builder::styling::Style::new().bold().fg_color(Some(
+            clap::builder::styling::Color::Ansi(clap::builder::styling::AnsiColor::Green),
+        )))
+        .literal(clap::builder::styling::Style::new().bold().fg_color(Some(
+            clap::builder::styling::Color::Ansi(clap::builder::styling::AnsiColor::Cyan),
+        )))
+        .invalid(clap::builder::styling::Style::new().bold().fg_color(Some(
+            clap::builder::styling::Color::Ansi(clap::builder::styling::AnsiColor::Red),
+        )))
+        .error(clap::builder::styling::Style::new().bold().fg_color(Some(
+            clap::builder::styling::Color::Ansi(clap::builder::styling::AnsiColor::Red),
+        )))
+        .valid(
+            clap::builder::styling::Style::new()
+                .bold()
+                .underline()
+                .fg_color(Some(clap::builder::styling::Color::Ansi(
+                    clap::builder::styling::AnsiColor::Cyan,
+                ))),
+        )
+        .placeholder(clap::builder::styling::Style::new().fg_color(Some(
+            clap::builder::styling::Color::Ansi(clap::builder::styling::AnsiColor::Cyan),
+        )))
 }
