@@ -7,7 +7,7 @@ use std::io::{self, stderr};
 use clap::{command, Parser, Subcommand};
 use crossterm::{
     execute,
-    style::{Attribute, Color, Print, ResetColor, SetAttribute, SetForegroundColor},
+    style::{Print, Stylize},
 };
 
 #[derive(Parser, Debug)]
@@ -49,13 +49,9 @@ async fn main() -> io::Result<()> {
     if let Err(error) = execute_command().await {
         execute!(
             stderr(),
-            SetForegroundColor(Color::DarkRed),
-            SetAttribute(Attribute::Bold),
-            Print("error"),
-            SetForegroundColor(Color::White),
-            Print(": "),
-            ResetColor,
-            Print(error),
+            Print("error".dark_red().bold()),
+            Print(": ".bold()),
+            Print(error.to_string().reset()),
             Print("\n"),
         )?;
     }
