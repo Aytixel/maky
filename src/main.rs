@@ -1,5 +1,6 @@
 mod commands;
 mod config;
+mod helpers;
 
 use std::io::{self, stderr};
 
