@@ -15,3 +15,19 @@ impl PathTarget for PathBuf {
         self.join(if release { "release" } else { "debug" })
     }
 }
+
+pub trait TryStripPrefixPath {
+    fn try_strip_prefix<P: AsRef<Path>>(&self, parent: P) -> Self;
+}
+
+impl TryStripPrefixPath for &Path {
+    fn try_strip_prefix<P: AsRef<Path>>(&self, parent: P) -> Self {
+        self.strip_prefix(parent).unwrap_or(self)
+    }
+}
+
+impl TryStripPrefixPath for PathBuf {
+    fn try_strip_prefix<P: AsRef<Path>>(&self, parent: P) -> Self {
+        self.strip_prefix(parent).unwrap_or(self).to_path_buf()
+    }
+}
