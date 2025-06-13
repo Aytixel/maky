@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::anyhow;
 use semver::Version;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_inline_default::serde_inline_default;
 use serde_with::{formats::PreferOne, serde_as, OneOrMany};
 use tokio::process::Command;
@@ -10,10 +10,9 @@ use which::which;
 
 #[serde_as]
 #[serde_inline_default]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Package {
     pub name: String,
-
     pub version: Version,
 
     /// C compiler config
@@ -21,7 +20,6 @@ pub struct Package {
     #[serde(rename = "cc")]
     #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
     c_compilers: Vec<String>,
-
     #[serde(rename = "cstd")]
     c_standard: Option<String>,
 
@@ -30,7 +28,6 @@ pub struct Package {
     #[serde(rename = "cxx")]
     #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
     cxx_compilers: Vec<String>,
-
     #[serde(rename = "cxxstd")]
     cxx_standard: Option<String>,
 
@@ -38,16 +35,13 @@ pub struct Package {
     #[serde_inline_default(Path::new("bin").to_path_buf())]
     #[serde(alias = "bin")]
     pub binaries: PathBuf,
-
     #[serde_inline_default(Path::new("obj").to_path_buf())]
     #[serde(alias = "obj")]
     pub objects: PathBuf,
-
     #[serde_inline_default(vec![Path::new("src").to_path_buf()])]
     #[serde(alias = "src")]
     #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
     pub sources: Vec<PathBuf>,
-
     #[serde_inline_default(vec![Path::new("include").to_path_buf()])]
     #[serde(alias = "inc")]
     #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
@@ -66,6 +60,8 @@ impl Package {
             ))?;
         let mut command = Command::new(c_compiler);
 
+        command.kill_on_drop(true);
+
         if let Some(c_standard) = &self.c_standard {
             command.arg(format!("-std={c_standard}"));
         }
@@ -83,6 +79,8 @@ impl Package {
                 self.cxx_compilers.join(", ")
             ))?;
         let mut command = Command::new(cxx_compiler);
+
+        command.kill_on_drop(true);
 
         if let Some(cxx_standard) = &self.cxx_standard {
             command.arg(format!("-std={cxx_standard}"));
