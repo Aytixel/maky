@@ -8,12 +8,16 @@ use serde_with::{formats::PreferOne, serde_as, OneOrMany};
 use tokio::process::Command;
 use which::which;
 
+use crate::config::require::RequireConfig;
+
 #[serde_as]
 #[serde_inline_default]
 #[derive(Deserialize, Debug, Clone)]
 pub struct Package {
-    pub name: String,
-    pub version: Version,
+    #[serde(default)]
+    pub require: RequireConfig,
+    pub name: Option<String>,
+    pub version: Option<Version>,
 
     /// C compiler config
     #[serde_inline_default(vec!["gcc".to_string(), "clang".to_string()])]

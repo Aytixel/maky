@@ -3,6 +3,7 @@ use std::{
     fmt::{Debug, Formatter},
 };
 
+use anyhow::anyhow;
 use serde::Deserialize;
 use serde_inline_default::serde_inline_default;
 
@@ -49,7 +50,7 @@ impl<T: Debug> Debug for VecOrValue<T> {
 #[serde_inline_default]
 #[derive(Deserialize, Debug)]
 pub struct Project {
-    pub package: Option<Package>,
+    package: VecOrValue<Package>,
     #[serde(default)]
     dependencies: DependenciesConfig,
     #[serde(rename = "bin", default)]
@@ -57,6 +58,32 @@ pub struct Project {
 }
 
 impl Project {
+    pub fn package(&self) -> anyhow::Result<Package> {
+        let packages = self.package.values();
+        let mut name = None;
+        let mut version = None;
+
+        for package in &packages {
+            if name.is_none() && package.name.is_some() {
+                name = package.name.clone();
+            }
+            if version.is_none() && package.version.is_some() {
+                version = package.version.clone();
+            }
+        }
+
+        packages
+            .into_iter()
+            .cloned()
+            .find(|package| package.require.has_requirements())
+            .map(|mut package| {
+                package.name = name;
+                package.version = version;
+                package
+            })
+            .ok_or(anyhow!("no feating package configuration found"))
+    }
+
     pub fn dependencies(&self) -> HashMap<&str, Vec<&DependencyConfig>> {
         self.dependencies
             .iter()
