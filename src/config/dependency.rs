@@ -42,8 +42,10 @@ pub enum TypedDependencyConfig {
         #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
         library: Vec<String>,
     },
-    PkgConfig {
-        #[serde(alias = "pkg")]
-        pkg_config: HashMap<String, VersionReq>,
+    Pkg {
+        pkg: HashMap<String, VersionReq>,
+    },
+    Vcpkg {
+        vcpkg: HashMap<String, VersionReq>,
     },
 }
