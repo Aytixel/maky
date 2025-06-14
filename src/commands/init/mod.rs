@@ -9,32 +9,35 @@ use tokio::fs::{create_dir, create_dir_all, write};
 
 #[derive(clap::Args, Debug, Clone)]
 pub struct Args {
-    /// Folder to initialize
-    #[arg(default_value = ".")]
-    path: PathBuf,
+    #[arg(value_name = "PATH", default_value = ".")]
+    project_path: PathBuf,
 }
 
 pub async fn execute(args: Args) -> anyhow::Result<()> {
-    if args.path.join("Maky.toml").exists() {
+    if args.project_path.join("Maky.toml").exists() {
         Err(anyhow!(
             "`maky init` cannot be run on existing Maky packages"
         ))
     } else {
-        create_dir_all(&args.path).await?;
+        create_dir_all(&args.project_path).await?;
 
-        let path = args.path.canonicalize()?;
+        let project_path = args.project_path.canonicalize()?;
 
         if !Path::new(".git").exists() {
-            Repository::init(&path)?;
+            Repository::init(&project_path)?;
         }
 
-        create_dir(path.join("src")).await.ok();
-        write(path.join(".gitignore"), include_str!("./assets/.gitignore")).await?;
+        create_dir(project_path.join("src")).await.ok();
         write(
-            path.join("Maky.toml"),
+            project_path.join(".gitignore"),
+            include_str!("./assets/.gitignore"),
+        )
+        .await?;
+        write(
+            project_path.join("Maky.toml"),
             include_str!("./assets/Maky.toml").replace(
                 "{{name}}",
-                &path
+                &project_path
                     .file_stem()
                     .map(OsStr::to_string_lossy)
                     .ok_or(anyhow!("can't create project name from directory"))?,
@@ -42,7 +45,11 @@ pub async fn execute(args: Args) -> anyhow::Result<()> {
         )
         .await?;
 
-        write(path.join("src/main.c"), include_str!("./assets/main.c")).await?;
+        write(
+            project_path.join("src/main.c"),
+            include_str!("./assets/main.c"),
+        )
+        .await?;
 
         Ok(())
     }

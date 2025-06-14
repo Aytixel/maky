@@ -19,7 +19,7 @@ struct Command {
 
 #[derive(Subcommand, Debug)]
 enum SubCommand {
-    /// Initialize a project folder
+    /// Initialize a new maky package directory
     Init {
         #[clap(flatten)]
         args: commands::init::Args,
