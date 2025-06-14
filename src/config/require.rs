@@ -5,12 +5,12 @@ use serde::Deserialize;
 use crate::config::VecOrValue;
 
 #[derive(Deserialize, Default, Clone)]
-pub struct RequireConfig(#[serde(default)] pub(self) VecOrValue<VecOrValue<String>>);
+pub(in crate::config) struct Require(#[serde(default)] pub(self) VecOrValue<VecOrValue<String>>);
 
-impl RequireConfig {
+impl Require {
     pub fn has_requirements(&self) -> bool {
-        self.0.values().into_iter().all(|requirements| {
-            let requirements = requirements.values();
+        self.0.values().all(|requirements| {
+            let requirements: Vec<_> = requirements.values().collect();
 
             requirements.is_empty()
                 || requirements
@@ -20,13 +20,13 @@ impl RequireConfig {
     }
 }
 
-impl fmt::Debug for RequireConfig {
+impl fmt::Debug for Require {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let values = self.0.values();
+        let values: Vec<_> = self.0.values().collect();
         let string = values
             .iter()
             .map(|value| {
-                let values = value.values();
+                let values: Vec<_> = value.values().collect();
                 let string = values
                     .iter()
                     .map(|v| (*v).clone())

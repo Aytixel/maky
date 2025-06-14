@@ -1,18 +1,18 @@
-use std::{env, path::PathBuf};
+use std::{env, path::Path};
 
 use anyhow::anyhow;
 use serde::Deserialize;
 use serde_inline_default::serde_inline_default;
 
-use crate::config::require::RequireConfig;
+use crate::config::{replace_path_templates, require::Require};
 
 #[serde_inline_default]
 #[derive(Deserialize, Debug, Clone)]
 pub struct Target {
     #[serde(default)]
-    pub require: RequireConfig,
+    pub(in crate::config) require: Require,
     name: Option<String>,
-    pub path: PathBuf,
+    pub path: String,
     #[serde(default)]
     pub import: Vec<String>,
     #[serde_inline_default(TargetType::Bin)]
@@ -24,11 +24,10 @@ impl Target {
     pub fn name(&self) -> anyhow::Result<String> {
         self.name
             .clone()
-            .or(self
-                .path
+            .or(Path::new(&self.path)
                 .file_stem()
                 .map(|name| name.to_string_lossy().to_string()))
-            .ok_or(anyhow!("can't create name from `{}`", self.path.display()))
+            .ok_or(anyhow!("can't create name from `{}`", self.path))
     }
 
     pub fn binary_name(&self) -> anyhow::Result<String> {
@@ -43,6 +42,11 @@ impl Target {
                 env::consts::DLL_EXTENSION
             ),
         })
+    }
+
+    pub(in crate::config) fn apply_path_templates(mut self) -> Self {
+        self.path = replace_path_templates(self.path);
+        self
     }
 }
 

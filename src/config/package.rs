@@ -1,5 +1,3 @@
-use std::path::{Path, PathBuf};
-
 use anyhow::anyhow;
 use semver::Version;
 use serde::Deserialize;
@@ -8,14 +6,14 @@ use serde_with::{formats::PreferOne, serde_as, OneOrMany};
 use tokio::process::Command;
 use which::which;
 
-use crate::config::require::RequireConfig;
+use crate::config::{replace_path_templates, require::Require};
 
 #[serde_as]
 #[serde_inline_default]
 #[derive(Deserialize, Debug, Clone)]
 pub struct Package {
     #[serde(default)]
-    pub require: RequireConfig,
+    pub(in crate::config) require: Require,
     pub name: Option<String>,
     pub version: Option<Version>,
 
@@ -36,20 +34,20 @@ pub struct Package {
     cxx_standard: Option<String>,
 
     /// Directories config
-    #[serde_inline_default(Path::new("bin").to_path_buf())]
+    #[serde_inline_default("bin".to_string())]
     #[serde(alias = "bin")]
-    pub binaries: PathBuf,
-    #[serde_inline_default(Path::new("obj").to_path_buf())]
+    pub binaries: String,
+    #[serde_inline_default("obj".to_string())]
     #[serde(alias = "obj")]
-    pub objects: PathBuf,
-    #[serde_inline_default(vec![Path::new("src").to_path_buf()])]
+    pub objects: String,
+    #[serde_inline_default(vec!["src".to_string()])]
     #[serde(alias = "src")]
     #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
-    pub sources: Vec<PathBuf>,
-    #[serde_inline_default(vec![Path::new("include").to_path_buf()])]
+    pub sources: Vec<String>,
+    #[serde_inline_default(vec!["include".to_string()])]
     #[serde(alias = "inc")]
     #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
-    pub includes: Vec<PathBuf>,
+    pub includes: Vec<String>,
 }
 
 impl Package {
@@ -91,5 +89,31 @@ impl Package {
         }
 
         Ok(command)
+    }
+
+    pub(in crate::config) fn apply_name(mut self, name: Option<String>) -> Self {
+        self.name = name;
+        self
+    }
+
+    pub(in crate::config) fn apply_version(mut self, version: Option<Version>) -> Self {
+        self.version = version;
+        self
+    }
+
+    pub(in crate::config) fn apply_path_templates(mut self) -> Self {
+        self.binaries = replace_path_templates(self.binaries);
+        self.objects = replace_path_templates(self.objects);
+        self.sources = self
+            .sources
+            .into_iter()
+            .map(replace_path_templates)
+            .collect();
+        self.includes = self
+            .includes
+            .into_iter()
+            .map(replace_path_templates)
+            .collect();
+        self
     }
 }
