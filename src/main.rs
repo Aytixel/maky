@@ -2,7 +2,10 @@ mod commands;
 mod config;
 mod helpers;
 
-use std::io::{self, stderr};
+use std::{
+    fmt::Display,
+    io::{self, stderr},
+};
 
 use clap::{command, Parser, Subcommand};
 use crossterm::{
@@ -47,13 +50,7 @@ enum SubCommand {
 #[tokio::main]
 async fn main() -> io::Result<()> {
     if let Err(error) = execute_command().await {
-        execute!(
-            stderr(),
-            Print("error".dark_red().bold()),
-            Print(": ".bold()),
-            Print(error.to_string().reset()),
-            Print("\n"),
-        )?;
+        print_error(error)?;
     }
 
     Ok(())
@@ -74,7 +71,17 @@ async fn execute_command() -> anyhow::Result<()> {
     return Ok(());
 }
 
-pub fn get_styles() -> clap::builder::Styles {
+fn print_error<T: Display>(error: T) -> io::Result<()> {
+    execute!(
+        stderr(),
+        Print("error".dark_red().bold()),
+        Print(": ".bold()),
+        Print(error.to_string().reset()),
+        Print("\n"),
+    )
+}
+
+fn get_styles() -> clap::builder::Styles {
     clap::builder::Styles::styled()
         .usage(clap::builder::styling::Style::new().bold().fg_color(Some(
             clap::builder::styling::Color::Ansi(clap::builder::styling::AnsiColor::Green),
