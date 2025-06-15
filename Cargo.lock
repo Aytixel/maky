@@ -870,7 +870,6 @@ dependencies = [
  "serde_with",
  "tokio",
  "toml",
- "vcpkg",
  "which",
 ]
 

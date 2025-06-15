@@ -20,7 +20,6 @@ kdam = { version = "0.6", features = ["rich", "spinner"] }
 anyhow = "1"
 
 pkg-config = "0.3"
-vcpkg = "0.2"
 
 git2 = "0.20"
 parse-git-url = "0.5"
