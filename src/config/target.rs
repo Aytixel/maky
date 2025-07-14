@@ -12,12 +12,20 @@ pub struct Target {
     #[serde(default)]
     pub(in crate::config) require: Require,
     name: Option<String>,
+    #[serde_inline_default("src/main.c".to_string())]
     pub path: String,
     #[serde(default)]
     pub import: Vec<String>,
     #[serde_inline_default(TargetType::Bin)]
     #[serde(rename = "type")]
     pub package_type: TargetType,
+
+    #[serde(default)]
+    pub defines: Vec<String>,
+    #[serde(default)]
+    pub cflags: Vec<String>,
+    #[serde(default)]
+    pub lflags: Vec<String>,
 }
 
 impl Target {
