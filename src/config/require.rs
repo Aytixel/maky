@@ -2,54 +2,109 @@ use std::{collections::HashSet, env, fmt, sync::LazyLock};
 
 use serde::Deserialize;
 
-use crate::config::VecOrValue;
-
 #[derive(Deserialize, Default, Clone)]
-pub(in crate::config) struct Require(#[serde(default)] pub(self) VecOrValue<VecOrValue<String>>);
+#[serde(untagged)]
+pub(in crate::config) enum Require {
+    Value(String),
+    Or {
+        or: Vec<Require>,
+    },
+    And {
+        and: Vec<Require>,
+    },
+    #[default]
+    None,
+}
 
 impl Require {
     pub fn has_requirements(&self) -> bool {
-        self.0.values().all(|requirements| {
-            let requirements: Vec<_> = requirements.values().collect();
+        match self {
+            Require::Value(requirement) => TARGET_REQUIREMENTS.contains(requirement),
+            Require::Or { or } => or.iter().any(Require::has_requirements),
+            Require::And { and } => and.iter().all(Require::has_requirements),
+            Require::None => true,
+        }
+    }
+}
 
-            requirements.is_empty()
-                || requirements
-                    .into_iter()
-                    .any(|requirement| TARGET_REQUIREMENTS.contains(requirement))
-        })
+impl fmt::Display for Require {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Require::Value(requirement) => write!(f, "{requirement}"),
+            Require::Or { or } => {
+                if or.is_empty() {
+                    write!(f, "nothing")
+                } else if or.len() == 1 {
+                    write!(f, "{:?}", or[0])
+                } else {
+                    write!(
+                        f,
+                        "({})",
+                        or.iter()
+                            .map(Require::to_string)
+                            .collect::<Vec<_>>()
+                            .join(" || ")
+                    )
+                }
+            }
+            Require::And { and } => {
+                if and.is_empty() {
+                    write!(f, "nothing")
+                } else if and.len() == 1 {
+                    write!(f, "{:?}", and[0])
+                } else {
+                    write!(
+                        f,
+                        "({})",
+                        and.iter()
+                            .map(Require::to_string)
+                            .collect::<Vec<_>>()
+                            .join(" && ")
+                    )
+                }
+            }
+            Require::None => write!(f, "nothing"),
+        }
     }
 }
 
 impl fmt::Debug for Require {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let values: Vec<_> = self.0.values().collect();
-        let string = values
-            .iter()
-            .map(|value| {
-                let values: Vec<_> = value.values().collect();
-                let string = values
-                    .iter()
-                    .map(|v| (*v).clone())
-                    .collect::<Vec<_>>()
-                    .join(" || ");
-
-                if values.len() == 0 {
-                    "nothing".to_string()
-                } else if values.len() == 1 {
-                    format!("{string}")
+        match self {
+            Require::Value(requirement) => write!(f, "{requirement}"),
+            Require::Or { or } => {
+                if or.is_empty() {
+                    write!(f, "nothing")
+                } else if or.len() == 1 {
+                    write!(f, "{:?}", or[0])
                 } else {
-                    format!("({string})")
+                    write!(
+                        f,
+                        "({})",
+                        or.iter()
+                            .map(Require::to_string)
+                            .collect::<Vec<_>>()
+                            .join(" || ")
+                    )
                 }
-            })
-            .collect::<Vec<_>>()
-            .join(" && ");
-
-        if values.len() == 0 {
-            write!(f, "nothing")
-        } else if values.len() == 1 {
-            write!(f, "{string}")
-        } else {
-            write!(f, "({string})")
+            }
+            Require::And { and } => {
+                if and.is_empty() {
+                    write!(f, "nothing")
+                } else if and.len() == 1 {
+                    write!(f, "{:?}", and[0])
+                } else {
+                    write!(
+                        f,
+                        "({})",
+                        and.iter()
+                            .map(Require::to_string)
+                            .collect::<Vec<_>>()
+                            .join(" && ")
+                    )
+                }
+            }
+            Require::None => write!(f, "nothing"),
         }
     }
 }
