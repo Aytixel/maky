@@ -18,12 +18,8 @@ pub struct Target {
     pub import: Vec<String>,
     #[serde_inline_default(TargetType::Bin)]
     #[serde(rename = "type")]
-    pub package_type: TargetType,
+    pub target_type: TargetType,
 
-    #[serde(default)]
-    pub defines: Vec<String>,
-    #[serde(default)]
-    pub cflags: Vec<String>,
     #[serde(default)]
     pub lflags: Vec<String>,
 }
@@ -41,9 +37,9 @@ impl Target {
     pub fn binary_name(&self) -> anyhow::Result<String> {
         let name = self.name()?;
 
-        Ok(match &self.package_type {
+        Ok(match &self.target_type {
             TargetType::Bin => format!("{name}{}", env::consts::EXE_SUFFIX),
-            TargetType::StaticLib => format!("{name}.a"),
+            TargetType::StaticLib => format!("{}{name}.a", env::consts::DLL_PREFIX),
             TargetType::Dylib => format!(
                 "{}{name}.{}",
                 env::consts::DLL_PREFIX,
@@ -58,7 +54,7 @@ impl Target {
     }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum TargetType {
     Bin,

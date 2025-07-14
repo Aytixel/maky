@@ -1,8 +1,8 @@
-use std::{collections::HashSet, env, fmt, sync::LazyLock};
+use std::{cmp, collections::HashSet, env, fmt, sync::LazyLock};
 
 use serde::Deserialize;
 
-#[derive(Deserialize, Default, Clone)]
+#[derive(Deserialize, Default, Clone, PartialEq, Eq)]
 #[serde(untagged)]
 pub(in crate::config) enum Require {
     Value(String),
@@ -23,6 +23,22 @@ impl Require {
             Require::Or { or } => or.iter().any(Require::has_requirements),
             Require::And { and } => and.iter().all(Require::has_requirements),
             Require::None => true,
+        }
+    }
+}
+
+impl cmp::PartialOrd for Require {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl cmp::Ord for Require {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        match (self, other) {
+            (Require::None, _) => cmp::Ordering::Greater,
+            (_, Require::None) => cmp::Ordering::Less,
+            _ => cmp::Ordering::Equal,
         }
     }
 }

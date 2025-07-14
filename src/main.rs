@@ -1,5 +1,6 @@
 mod commands;
 mod config;
+mod file;
 mod helpers;
 
 use std::{
@@ -7,7 +8,7 @@ use std::{
     io::{self, stderr},
 };
 
-use clap::{command, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use crossterm::{
     execute,
     style::{Print, Stylize},
@@ -57,8 +58,6 @@ async fn main() -> io::Result<()> {
 }
 
 async fn execute_command() -> anyhow::Result<()> {
-    kdam::term::init(true);
-
     let command = Command::parse();
 
     match command.subcommand {
@@ -77,6 +76,16 @@ fn print_error<T: Display>(error: T) -> io::Result<()> {
         Print("error".dark_red().bold()),
         Print(": ".bold()),
         Print(error.to_string().reset()),
+        Print("\n"),
+    )
+}
+
+fn print_warning<T: Display>(warning: T) -> io::Result<()> {
+    execute!(
+        stderr(),
+        Print("warning".yellow().bold()),
+        Print(": ".bold()),
+        Print(warning.to_string().reset()),
         Print("\n"),
     )
 }

@@ -1,5 +1,3 @@
-//@lib test
-
 #include "lib.h"
 
 extern void hello()

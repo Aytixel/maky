@@ -2,6 +2,8 @@ use std::{
     collections::HashMap,
     env,
     fmt::{Debug, Formatter},
+    iter,
+    path::Path,
 };
 
 use anyhow::anyhow;
@@ -9,9 +11,9 @@ use serde::Deserialize;
 use serde_inline_default::serde_inline_default;
 
 pub use crate::config::{
-    dependency::{Dependency, TypedDependency},
+    dependency::{Dependency, MakyPathDependency, TypedDependency},
     package::Package,
-    target::Target,
+    target::{Target, TargetType},
 };
 
 mod dependency;
@@ -22,7 +24,7 @@ mod target;
 // The order of variants is important and should not be changed
 #[derive(Deserialize, Clone)]
 #[serde(untagged)]
-enum VecOrValue<T> {
+pub enum VecOrValue<T> {
     Vec(Vec<T>),
     Value(T),
 }
@@ -30,7 +32,7 @@ enum VecOrValue<T> {
 impl<T> VecOrValue<T> {
     pub fn values<'a>(&'a self) -> Box<dyn Iterator<Item = &'a T> + 'a> {
         match self {
-            VecOrValue::Value(v) => Box::new(vec![v].into_iter()),
+            VecOrValue::Value(v) => Box::new(iter::once(v)),
             VecOrValue::Vec(v) => Box::new(v.iter()),
         }
     }
@@ -48,25 +50,38 @@ impl<T: Debug> Debug for VecOrValue<T> {
     }
 }
 
+impl<A> FromIterator<A> for VecOrValue<A> {
+    fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self {
+        Self::Vec(iter.into_iter().collect())
+    }
+}
+
 #[serde_inline_default]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Project {
     package: VecOrValue<Package>,
     #[serde(default)]
     dependencies: HashMap<String, VecOrValue<Dependency>>,
     #[serde(rename = "bin", default)]
     binaries: Vec<Target>,
+    #[serde(rename = "example", default)]
+    examples: Vec<Target>,
+    #[serde(rename = "test", default)]
+    tests: Vec<Target>,
+    #[serde(rename = "bench", default)]
+    benchmarks: Vec<Target>,
 }
 
 impl Project {
-    pub fn package(&self) -> anyhow::Result<Package> {
+    pub fn package(&self, project_path: &Path) -> anyhow::Result<Package> {
+        let mut packages: Vec<_> = self.package.values().collect();
         let mut name = None;
         let mut version = None;
 
         // Search the first name and version declared since we allow to have
         // multiple system dependent package definition, but a package should
         // have one and only name and version
-        for package in self.package.values() {
+        for package in &packages {
             if name.is_none() && package.name.is_some() {
                 name = package.name.clone();
             }
@@ -78,8 +93,19 @@ impl Project {
             }
         }
 
-        self.package
-            .values()
+        if name.is_none() {
+            name = Some(
+                project_path
+                    .file_stem()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string(),
+            );
+        }
+
+        packages.sort_by_key(|package| &package.require);
+        packages
+            .into_iter()
             .find(|package| package.require.has_requirements())
             .cloned()
             .map(|package| {
@@ -114,6 +140,33 @@ impl Project {
         self.binaries
             .iter()
             .filter(|binary| binary.require.has_requirements())
+            .cloned()
+            .map(Target::apply_path_templates)
+            .collect()
+    }
+
+    pub fn examples(&self) -> Vec<Target> {
+        self.examples
+            .iter()
+            .filter(|example| example.require.has_requirements())
+            .cloned()
+            .map(Target::apply_path_templates)
+            .collect()
+    }
+
+    pub fn tests(&self) -> Vec<Target> {
+        self.tests
+            .iter()
+            .filter(|test| test.require.has_requirements())
+            .cloned()
+            .map(Target::apply_path_templates)
+            .collect()
+    }
+
+    pub fn benchmarks(&self) -> Vec<Target> {
+        self.benchmarks
+            .iter()
+            .filter(|benchmark| benchmark.require.has_requirements())
             .cloned()
             .map(Target::apply_path_templates)
             .collect()

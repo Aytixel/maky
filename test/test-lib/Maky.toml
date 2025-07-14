@@ -2,5 +2,10 @@
 version = "0.1.0"
 
 [dependencies]
-lib = { version = "0.1.0", path = "../lib" }
-helloworld = { version = "0.1.0", git = "https://github.com/Aytixel/maky-hello-world.git", rev = "master" }
+lib = { version = "0.1.0", path = "../lib", lib = ["test"] }
+helloworld = { version = "0.1.0", git = "https://github.com/Aytixel/maky-hello-world.git", lib = [
+    "helloworld",
+] }
+
+[[bin]]
+import = ["lib", "helloworld"]

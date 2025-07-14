@@ -1,6 +1,5 @@
 #include "helloworld.hpp"
 
-//@main
 int main()
 {
     HelloWorld hello_world;

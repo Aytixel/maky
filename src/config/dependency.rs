@@ -1,16 +1,22 @@
-use std::collections::HashMap;
-
 use semver::VersionReq;
 use serde::Deserialize;
 use serde_with::{formats::PreferOne, serde_as, OneOrMany};
+use tuple_vec_map;
 
-use crate::config::{replace_path_templates, require::Require};
+use crate::config::{replace_path_templates, require::Require, VecOrValue};
 
 #[serde_as]
 #[derive(Deserialize, Debug, Clone)]
 pub struct Dependency {
     #[serde(default)]
     pub(in crate::config) require: Require,
+
+    #[serde(default)]
+    pub defines: Vec<String>,
+    #[serde(default)]
+    pub cflags: Vec<String>,
+    #[serde(default)]
+    pub lflags: Vec<String>,
 
     #[serde(flatten)]
     pub dependency: TypedDependency,
@@ -19,6 +25,9 @@ pub struct Dependency {
 impl Dependency {
     pub(in crate::config) fn apply_path_templates(mut self) -> Self {
         match &mut self.dependency {
+            TypedDependency::Pkg { paths: path, .. } => {
+                *path = path.values().map(replace_path_templates).collect();
+            }
             TypedDependency::Local {
                 directories,
                 includes,
@@ -37,49 +46,53 @@ impl Dependency {
     }
 }
 
+#[derive(Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum MakyPathDependency {
+    Git {
+        #[serde(rename = "git")]
+        url: String,
+        rev: Option<String>,
+        path: Option<String>,
+    },
+    Local {
+        path: String,
+    },
+}
+
 #[serde_as]
 #[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum TypedDependency {
-    MakyLocal {
-        #[serde(default)]
-        version: Option<VersionReq>,
+    Pkg {
+        #[serde(alias = "path", default)]
+        paths: VecOrValue<String>,
 
-        path: String,
-
-        #[serde(alias = "lib", default)]
-        #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
-        library: Vec<String>,
+        #[serde(with = "tuple_vec_map")]
+        pkg: Vec<(String, VersionReq)>,
     },
-    MakyGit {
+    Maky {
         #[serde(default)]
         version: Option<VersionReq>,
 
-        git: String,
-
-        rev: Option<String>,
+        #[serde(flatten)]
+        path: MakyPathDependency,
 
         #[serde(alias = "lib", default)]
         #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
-        library: Vec<String>,
+        libraries: Vec<String>,
     },
     Local {
-        #[serde(alias = "dir", default)]
-        #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
-        directories: Vec<String>,
-
         #[serde(alias = "inc", default)]
         #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
         includes: Vec<String>,
 
+        #[serde(alias = "dir", default)]
+        #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
+        directories: Vec<String>,
+
         #[serde(alias = "lib", default)]
         #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
-        library: Vec<String>,
-    },
-    PkgSystem {
-        pkg: HashMap<String, VersionReq>,
-    },
-    PkgLocal {
-        pkg: String,
+        libraries: Vec<String>,
     },
 }

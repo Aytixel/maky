@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 use anyhow::anyhow;
 use semver::Version;
 use serde::Deserialize;
@@ -6,7 +8,10 @@ use serde_with::{formats::PreferOne, serde_as, OneOrMany};
 use tokio::process::Command;
 use which::which;
 
-use crate::config::{replace_path_templates, require::Require};
+use crate::{
+    config::{replace_path_templates, require::Require},
+    helpers::PathTarget,
+};
 
 #[serde_as]
 #[serde_inline_default]
@@ -18,7 +23,7 @@ pub struct Package {
     pub version: Option<Version>,
 
     /// C compiler config
-    #[serde_inline_default(vec!["gcc".to_string(), "clang".to_string()])]
+    #[serde_inline_default(vec!["clang".to_string(), "gcc".to_string()])]
     #[serde(rename = "cc")]
     #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
     c_compilers: Vec<String>,
@@ -26,25 +31,45 @@ pub struct Package {
     c_standard: Option<String>,
 
     /// C++ compiler config
-    #[serde_inline_default(vec!["g++".to_string(), "clang++".to_string()])]
+    #[serde_inline_default(vec!["clang++".to_string(), "g++".to_string()])]
     #[serde(rename = "cxx")]
     #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
     cxx_compilers: Vec<String>,
     #[serde(rename = "cxxstd")]
     cxx_standard: Option<String>,
 
+    /// Compiler options
+    #[serde(default)]
+    pub defines: Vec<String>,
+    #[serde(default)]
+    pub cflags: Vec<String>,
+
+    /// Linker config
+    #[serde_inline_default(vec!["mold".to_string(), "lld".to_string(), "gold".to_string(), "ld".to_string()])]
+    #[serde(rename = "ld")]
+    #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
+    linkers: Vec<String>,
+    #[serde_inline_default(vec!["llvm-ar".to_string(), "gcc-ar".to_string(), "ar".to_string()])]
+    #[serde(rename = "ar")]
+    #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
+    archivers: Vec<String>,
+
+    /// Linker options
+    #[serde(default)]
+    pub lflags: Vec<String>,
+
     /// Directories config
     #[serde_inline_default("bin".to_string())]
     #[serde(alias = "bin")]
-    pub binaries: String,
+    binaries: String,
     #[serde_inline_default("obj".to_string())]
     #[serde(alias = "obj")]
-    pub objects: String,
+    objects: String,
     #[serde_inline_default(vec!["src".to_string()])]
     #[serde(alias = "src")]
     #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
     pub sources: Vec<String>,
-    #[serde_inline_default(vec!["include".to_string()])]
+    #[serde_inline_default(vec!["include".to_string(), "src".to_string()])]
     #[serde(alias = "inc")]
     #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
     pub includes: Vec<String>,
@@ -77,7 +102,7 @@ impl Package {
             .iter()
             .find_map(|cxx_compiler| which(cxx_compiler).ok())
             .ok_or(anyhow!(
-                "can't find any c compiler: {}",
+                "can't find any cpp compiler: {}",
                 self.cxx_compilers.join(", ")
             ))?;
         let mut command = Command::new(cxx_compiler);
@@ -89,6 +114,46 @@ impl Package {
         }
 
         Ok(command)
+    }
+
+    pub fn linker(&self) -> anyhow::Result<Command> {
+        let mut command = self.cxx_compiler().or_else(|_| self.c_compiler())?;
+        let linker = self
+            .linkers
+            .iter()
+            .find_map(|linker| which(linker).is_ok().then_some(linker))
+            .ok_or(anyhow!(
+                "can't find any linker: {}",
+                self.linkers.join(", ")
+            ))?;
+
+        command.arg(format!("-fuse-ld={linker}"));
+
+        Ok(command)
+    }
+
+    pub fn archiver(&self) -> anyhow::Result<Command> {
+        let archiver = self
+            .archivers
+            .iter()
+            .find_map(|archiver| which(archiver).ok())
+            .ok_or(anyhow!(
+                "can't find any archiver: {}",
+                self.archivers.join(", ")
+            ))?;
+        let mut command = Command::new(archiver);
+
+        command.kill_on_drop(true);
+
+        Ok(command)
+    }
+
+    pub fn binaries(&self, release: bool) -> PathBuf {
+        Path::new(&self.binaries).target_release(release)
+    }
+
+    pub fn objects(&self, release: bool) -> PathBuf {
+        Path::new(&self.objects).target_release(release)
     }
 
     pub(in crate::config) fn apply_name(mut self, name: Option<String>) -> Self {
