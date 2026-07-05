@@ -10,7 +10,8 @@ use tokio::{process::Command, task::JoinSet};
 use crate::{
     commands::build::{dependencies::Dependency, file::SourceFile},
     config::{self, Target, TargetType},
-    helpers, print_error,
+    helpers::{self, PathTarget},
+    print_error,
 };
 
 static LIBRARIES_PATHS: LazyLock<Vec<String>> = LazyLock::new(|| {
@@ -46,7 +47,8 @@ pub async fn link(
             .into_iter()
             .map(|target_source_file| {
                 package_config
-                    .objects(release)
+                    .objects()
+                    .target_release(release)
                     .join(source_files[target_source_file].hash.to_string())
             })
             .collect();
@@ -100,7 +102,12 @@ async fn static_linking(
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .arg("rcs")
-        .arg(package_config.binaries(release).join(target.binary_name()?))
+        .arg(
+            package_config
+                .binaries()
+                .target_release(release)
+                .join(target.binary_name()?),
+        )
         .args(object_files);
 
     Ok(command)
@@ -168,11 +175,12 @@ async fn dynamic_linking(
         command.arg("-shared");
     }
 
-    command
-        .args(lflags)
-        .args(object_files)
-        .arg("-o")
-        .arg(package_config.binaries(release).join(target.binary_name()?));
+    command.args(lflags).args(object_files).arg("-o").arg(
+        package_config
+            .binaries()
+            .target_release(release)
+            .join(target.binary_name()?),
+    );
 
     Ok(command)
 }

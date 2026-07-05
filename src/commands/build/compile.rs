@@ -10,7 +10,7 @@ use crate::{
     commands::build::{dependencies::Dependency, file::SourceFile},
     config,
     file::Language,
-    helpers::{self, AsStrVec},
+    helpers::{self, AsStrVec, PathTarget},
     print_error,
 };
 
@@ -68,7 +68,8 @@ pub async fn compile(
         };
 
         let object_file = package_config
-            .objects(release)
+            .objects()
+            .target_release(release)
             .join(source_files[&updated_source_file].hash.to_string());
 
         command

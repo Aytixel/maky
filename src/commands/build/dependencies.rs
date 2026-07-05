@@ -4,6 +4,7 @@ mod pkg;
 use std::{collections::HashMap, path::PathBuf, sync::LazyLock};
 
 use anyhow::anyhow;
+use tokio::fs::remove_dir_all;
 
 use crate::{
     commands::build::dependencies::{maky::get_maky_dependency, pkg::get_pkg_dependency},
@@ -48,6 +49,10 @@ impl Dependency {
         release: bool,
         update: bool,
     ) -> anyhow::Result<HashMap<String, Self>> {
+        if project_paths.maky_includes_path.is_dir() {
+            remove_dir_all(&project_paths.maky_includes_path).await?;
+        }
+
         let mut dependencies = HashMap::new();
         let mut skip_pkg_config = false;
 

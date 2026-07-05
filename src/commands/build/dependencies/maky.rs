@@ -8,7 +8,6 @@ use async_recursion::async_recursion;
 use async_walkdir::WalkDir;
 use futures_lite::StreamExt;
 use git2::Repository;
-use parse_git_url::GitUrl;
 use semver::VersionReq;
 use tokio::fs::{copy, create_dir_all};
 
@@ -16,7 +15,7 @@ use crate::{
     commands::build::dependencies::{Dependency, DependencyProject},
     config::MakyPathDependency,
     file::is_header_file,
-    helpers,
+    helpers::{self, PathTarget},
 };
 
 fn fetch_default_branch(
@@ -94,23 +93,11 @@ pub async fn get_maky_dependency(
     libraries: Vec<String>,
     update: bool,
 ) -> anyhow::Result<Dependency> {
-    let project_path = match path {
-        MakyPathDependency::Git { url, rev, path } => {
-            let git_url = GitUrl::parse(&url)?;
-            let project_path = parent_project_paths
-                .maky_dependencies_path
-                .join(git_url.name);
+    let (project_path, git) = path.path(&parent_project_paths)?;
 
-            pull(&project_path, url, rev, update)?;
-
-            if let Some(path) = path {
-                project_path.join(path)
-            } else {
-                project_path
-            }
-        }
-        MakyPathDependency::Local { path } => parent_project_paths.project_path.join(path),
-    };
+    if let Some((url, rev, path)) = git {
+        pull(&path, url.to_string(), rev, update)?;
+    }
 
     let project_paths = helpers::paths(Some(project_path.as_path()), release)?;
     let project_config = project_paths.config().await?;
@@ -144,7 +131,7 @@ pub async fn get_maky_dependency(
     let directories = vec![
         project_paths
             .project_path
-            .join(project_package.binaries(release))
+            .join(project_package.binaries().target_release(release))
             .to_string_lossy()
             .to_string(),
     ];

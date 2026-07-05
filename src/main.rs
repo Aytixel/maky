@@ -64,7 +64,7 @@ async fn execute_command() -> anyhow::Result<()> {
         SubCommand::Init { command } => command.execute().await?,
         SubCommand::Build { command } => command.execute().await?,
         SubCommand::Run { command } => todo!(),
-        SubCommand::Clean { command } => todo!(),
+        SubCommand::Clean { command } => command.execute().await?,
     }
 
     return Ok(());

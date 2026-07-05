@@ -30,7 +30,7 @@ use crate::{
         },
     },
     config::{self, Package, Target, TargetType},
-    helpers::{self, ProjectPaths},
+    helpers::{self, PathTarget, ProjectPaths},
 };
 
 #[derive(clap::Args, Debug, Clone)]
@@ -153,14 +153,14 @@ impl Command {
 
         let binaries_path = project_paths
             .project_path
-            .join(&package_config.binaries(self.release));
+            .join(&package_config.binaries().target_release(self.release));
         if !binaries_path.is_dir() {
             create_dir_all(&binaries_path).await?;
         }
 
         let objects_path = project_paths
             .project_path
-            .join(&package_config.objects(self.release));
+            .join(&package_config.objects().target_release(self.release));
         if !objects_path.is_dir() {
             create_dir_all(&objects_path).await?;
         }
@@ -256,13 +256,19 @@ impl Command {
                             || binary.target_type == TargetType::StaticLib
                         {
                             let binary_name = binary.binary_name()?;
-                            let source_library_path = project
-                                .paths
-                                .project_path
-                                .join(project.package.binaries(self.release).join(&binary_name));
-                            let target_library_path = project_paths
-                                .project_path
-                                .join(package_config.binaries(self.release).join(binary_name));
+                            let source_library_path = project.paths.project_path.join(
+                                project
+                                    .package
+                                    .binaries()
+                                    .target_release(self.release)
+                                    .join(&binary_name),
+                            );
+                            let target_library_path = project_paths.project_path.join(
+                                package_config
+                                    .binaries()
+                                    .target_release(self.release)
+                                    .join(binary_name),
+                            );
 
                             if source_library_path.exists() {
                                 copy(source_library_path, target_library_path).await?;

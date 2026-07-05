@@ -1,9 +1,15 @@
+use std::path::PathBuf;
+
+use parse_git_url::GitUrl;
 use semver::VersionReq;
 use serde::Deserialize;
-use serde_with::{formats::PreferOne, serde_as, OneOrMany};
+use serde_with::{OneOrMany, formats::PreferOne, serde_as};
 use tuple_vec_map;
 
-use crate::config::{replace_path_templates, require::Require, VecOrValue};
+use crate::{
+    config::{VecOrValue, replace_path_templates, require::Require},
+    helpers,
+};
 
 #[serde_as]
 #[derive(Deserialize, Debug, Clone)]
@@ -58,6 +64,32 @@ pub enum MakyPathDependency {
     Local {
         path: String,
     },
+}
+
+impl MakyPathDependency {
+    pub fn path(
+        &self,
+        project_paths: &helpers::ProjectPaths,
+    ) -> anyhow::Result<(PathBuf, Option<(GitUrl, Option<String>, PathBuf)>)> {
+        Ok(match self {
+            MakyPathDependency::Git { url, rev, path } => {
+                let git_url = GitUrl::parse(&url)?;
+                let project_path = project_paths
+                    .maky_dependencies_path
+                    .join(git_url.name.clone());
+
+                (
+                    if let Some(path) = path {
+                        project_path.join(path)
+                    } else {
+                        project_path.clone()
+                    },
+                    Some((git_url, rev.clone(), project_path)),
+                )
+            }
+            MakyPathDependency::Local { path } => (project_paths.project_path.join(path), None),
+        })
+    }
 }
 
 #[serde_as]

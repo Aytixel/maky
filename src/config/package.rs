@@ -1,17 +1,14 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::anyhow;
 use semver::Version;
 use serde::Deserialize;
 use serde_inline_default::serde_inline_default;
-use serde_with::{formats::PreferOne, serde_as, OneOrMany};
+use serde_with::{OneOrMany, formats::PreferOne, serde_as};
 use tokio::process::Command;
 use which::which;
 
-use crate::{
-    config::{replace_path_templates, require::Require},
-    helpers::PathTarget,
-};
+use crate::config::{replace_path_templates, require::Require};
 
 #[serde_as]
 #[serde_inline_default]
@@ -61,10 +58,10 @@ pub struct Package {
     /// Directories config
     #[serde_inline_default("bin".to_string())]
     #[serde(alias = "bin")]
-    binaries: String,
+    pub binaries: String,
     #[serde_inline_default("obj".to_string())]
     #[serde(alias = "obj")]
-    objects: String,
+    pub objects: String,
     #[serde_inline_default(vec!["src".to_string()])]
     #[serde(alias = "src")]
     #[serde_as(deserialize_as = "OneOrMany<_, PreferOne>")]
@@ -148,12 +145,12 @@ impl Package {
         Ok(command)
     }
 
-    pub fn binaries(&self, release: bool) -> PathBuf {
-        Path::new(&self.binaries).target_release(release)
+    pub fn binaries(&self) -> &Path {
+        Path::new(&self.binaries)
     }
 
-    pub fn objects(&self, release: bool) -> PathBuf {
-        Path::new(&self.objects).target_release(release)
+    pub fn objects(&self) -> &Path {
+        Path::new(&self.objects)
     }
 
     pub(in crate::config) fn apply_name(mut self, name: Option<String>) -> Self {

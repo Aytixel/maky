@@ -878,6 +878,7 @@ dependencies = [
  "git2",
  "nanoserde",
  "parse-git-url",
+ "prettier-bytes",
  "semver",
  "serde",
  "serde-inline-default",
@@ -1033,6 +1034,12 @@ name = "powerfmt"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
+
+[[package]]
+name = "prettier-bytes"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e37baac8eb5017d8a389e0bd883fac246c0a48c4ae9626b0e3ffc71390e596bb"
 
 [[package]]
 name = "proc-macro2"
