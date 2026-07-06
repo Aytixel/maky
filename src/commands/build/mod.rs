@@ -26,7 +26,7 @@ use crate::{
                 check_updated_source_files, filter_source_files,
                 get_source_files_reverse_dependencies, get_targets_source_files, scan_source_files,
             },
-            link::link,
+            link::{link, link_flags},
         },
     },
     config::{self, Package, Target, TargetType},
@@ -324,32 +324,20 @@ impl Command {
         let mut targets_source_files =
             get_targets_source_files(targets, &source_files, &source_files_reverse_dependencies)
                 .await?;
-        let mut targets_lflags = Vec::new();
-        for (target, _) in &targets_source_files {
-            if target.target_type == TargetType::StaticLib {
-                targets_lflags.extend(
-                    target
-                        .import
-                        .iter()
-                        .flat_map(|import| dependencies.get(import))
-                        .fold(
-                            [
-                                dependencies_lflags
-                                    .get(&target.name()?)
-                                    .cloned()
-                                    .unwrap_or_default(),
-                                target.lflags.clone(),
-                                package_config.lflags.clone(),
-                            ]
-                            .concat(),
-                            |mut acc, dependency_config| {
-                                acc.extend(dependency_config.lflags.clone());
-                                acc
-                            },
-                        ),
-                );
-            }
-        }
+        let mut static_lflags = Vec::new();
+        let targets_lflags: HashMap<String, Vec<String>> = targets_source_files
+            .iter()
+            .map(|(target, _)| {
+                let lflags =
+                    link_flags(package_config, dependencies, target, &dependencies_lflags)?;
+
+                if target.target_type == TargetType::StaticLib {
+                    static_lflags.extend(lflags.clone());
+                }
+
+                Ok((target.name()?, lflags))
+            })
+            .collect::<anyhow::Result<_>>()?;
 
         targets_source_files.retain(|(target, source_files)| {
             !source_files.is_disjoint(&updated_source_files)
@@ -366,16 +354,15 @@ impl Command {
             link(
                 project_paths,
                 package_config,
-                dependencies,
                 &targets_source_files,
                 &source_files,
-                &dependencies_lflags,
+                &targets_lflags,
                 self.release,
             )
             .await?;
         }
 
-        Ok(targets_lflags)
+        Ok(static_lflags)
     }
 }
 

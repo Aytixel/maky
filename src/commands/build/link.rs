@@ -1,8 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::Stdio,
-    sync::LazyLock,
 };
 
 use tokio::{process::Command, task::JoinSet};
@@ -14,26 +13,28 @@ use crate::{
     print_error,
 };
 
-static LIBRARIES_PATHS: LazyLock<Vec<String>> = LazyLock::new(|| {
-    let mut paths = vec![".".to_string()];
-
-    for path in ["/usr/local/lib/", "/usr/lib/", "/lib/x86_64-linux-gnu/"] {
-        if Path::new(path).is_dir() {
-            paths.extend(["-Wl,-rpath".to_string(), path.to_string()]);
-        }
-    }
-
-    paths.reverse();
-    paths
-});
+const LIBRARIES_PATHS: &[&'static str] = &[
+    "$ORIGIN/.",
+    "/usr/x86_64-pc-linux-gnu/lib64",
+    "/usr/x86_64-pc-linux-gnu/lib",
+    "/usr/lib64",
+    "/usr/lib/x86_64-pc-linux-gnu",
+    "/usr/lib/i386-linux-gnu",
+    "/usr/lib",
+    "/usr/local/lib64",
+    "/usr/local/lib",
+    "/lib64",
+    "/lib/x86_64-linux-gnu",
+    "/lib/i386-linux-gnu",
+    "/lib",
+];
 
 pub async fn link(
     project_paths: &helpers::ProjectPaths,
     package_config: &config::Package,
-    dependencies: &HashMap<String, Dependency>,
     targets_source_files: &Vec<(Target, HashSet<PathBuf>)>,
     source_files: &HashMap<PathBuf, SourceFile>,
-    dependencies_lflags: &HashMap<String, Vec<String>>,
+    targets_lflags: &HashMap<String, Vec<String>>,
     release: bool,
 ) -> anyhow::Result<()> {
     if targets_source_files.is_empty() {
@@ -59,11 +60,10 @@ pub async fn link(
             dynamic_linking(
                 project_paths,
                 package_config,
-                dependencies,
                 release,
                 target,
                 object_files,
-                &dependencies_lflags,
+                targets_lflags,
             )
             .await?
         };
@@ -116,47 +116,11 @@ async fn static_linking(
 async fn dynamic_linking(
     project_paths: &helpers::ProjectPaths,
     package_config: &config::Package,
-    dependencies: &HashMap<String, Dependency>,
     release: bool,
     target: &Target,
     object_files: Vec<PathBuf>,
-    dependencies_lflags: &HashMap<String, Vec<String>>,
+    targets_lflags: &HashMap<String, Vec<String>>,
 ) -> anyhow::Result<Command> {
-    let lflags = target
-        .import
-        .iter()
-        .flat_map(|import| dependencies.get(import))
-        .fold(
-            [
-                dependencies_lflags
-                    .get(&target.name()?)
-                    .cloned()
-                    .unwrap_or_default(),
-                target.lflags.clone(),
-                package_config.lflags.clone(),
-            ]
-            .concat(),
-            |mut acc, dependency_config| {
-                acc.extend(dependency_config.lflags.clone());
-                acc.push("-L".to_string());
-                acc.extend(
-                    dependency_config
-                        .directories
-                        .iter()
-                        .map(|directory| [directory.clone(), "-Wl,-rpath".to_string()])
-                        .flatten(),
-                );
-                acc.extend(LIBRARIES_PATHS.clone());
-                acc.extend(
-                    dependency_config
-                        .libraries
-                        .iter()
-                        .map(|library| format!("-l{library}")),
-                );
-                acc
-            },
-        );
-
     let mut command = package_config.linker()?;
 
     command
@@ -175,12 +139,66 @@ async fn dynamic_linking(
         command.arg("-shared");
     }
 
-    command.args(lflags).args(object_files).arg("-o").arg(
-        package_config
-            .binaries()
-            .target_release(release)
-            .join(target.binary_name()?),
-    );
+    command
+        .args(
+            LIBRARIES_PATHS
+                .iter()
+                .map(|path| format!("-Wl,-rpath={path}")),
+        )
+        .args(
+            targets_lflags
+                .get(&target.name()?)
+                .cloned()
+                .unwrap_or_default(),
+        )
+        .args(object_files)
+        .arg("-o")
+        .arg(
+            package_config
+                .binaries()
+                .target_release(release)
+                .join(target.binary_name()?),
+        );
 
     Ok(command)
+}
+
+pub fn link_flags(
+    package_config: &config::Package,
+    dependencies: &HashMap<String, Dependency>,
+    target: &Target,
+    dependencies_lflags: &HashMap<String, Vec<String>>,
+) -> anyhow::Result<Vec<String>> {
+    Ok(dependencies_lflags
+        .get(&target.name()?)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .chain(target.lflags.clone())
+        .chain(package_config.lflags.clone())
+        .chain(
+            target
+                .import
+                .iter()
+                .flat_map(|import| dependencies.get(import))
+                .flat_map(|dependency_config| {
+                    dependency_config
+                        .lflags
+                        .clone()
+                        .into_iter()
+                        .chain(
+                            dependency_config
+                                .directories
+                                .iter()
+                                .map(|path| format!("-L{path}")),
+                        )
+                        .chain(
+                            dependency_config
+                                .libraries
+                                .iter()
+                                .map(|library| format!("-l{library}")),
+                        )
+                }),
+        )
+        .collect())
 }
