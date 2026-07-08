@@ -1,6 +1,6 @@
 use std::{
     fs::{read_to_string, write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use anyhow::anyhow;
@@ -136,10 +136,43 @@ pub async fn get_maky_dependency(
             .to_string(),
     ];
 
-    // copy headers
-    for include in &project_package.includes {
-        let include = project_paths.project_path.join(include);
+    copy_headers(
+        project_package
+            .includes
+            .iter()
+            .map(|include| project_paths.project_path.join(include))
+            .collect(),
+        parent_project_paths
+            .maky_includes_path
+            .join("deps")
+            .join(name),
+    )
+    .await?;
+    copy_headers(
+        vec![project_paths.maky_includes_path.join("deps")],
+        parent_project_paths.maky_includes_path.join("deps"),
+    )
+    .await?;
 
+    Ok(Dependency {
+        project: Some(DependencyProject {
+            config: project_config,
+            package: project_package,
+            paths: project_paths,
+            dependencies,
+        }),
+        includes,
+        directories,
+        libraries,
+        ..Default::default()
+    })
+}
+
+async fn copy_headers(
+    includes: Vec<PathBuf>,
+    includes_output_directory: PathBuf,
+) -> anyhow::Result<()> {
+    for include in includes {
         if !include.exists() {
             continue;
         }
@@ -158,11 +191,7 @@ pub async fn get_maky_dependency(
             };
 
             if is_header_file(extension) {
-                let new_path = parent_project_paths
-                    .maky_includes_path
-                    .join("deps")
-                    .join(name)
-                    .join(path.strip_prefix(&include)?);
+                let new_path = includes_output_directory.join(path.strip_prefix(&include)?);
 
                 create_dir_all(new_path.parent().unwrap()).await?;
                 copy(path, new_path).await?;
@@ -170,16 +199,5 @@ pub async fn get_maky_dependency(
         }
     }
 
-    Ok(Dependency {
-        project: Some(DependencyProject {
-            config: project_config,
-            package: project_package,
-            paths: project_paths,
-            dependencies,
-        }),
-        includes,
-        directories,
-        libraries,
-        ..Default::default()
-    })
+    Ok(())
 }

@@ -20,7 +20,7 @@ use crate::{
     commands::{
         self, COMPILATION_OPTIONS, TARGET_SELECTION,
         build::{
-            dependencies::Dependency,
+            dependencies::{Dependency, DependencyProject},
             file::{
                 add_source_files_dependencies, add_uncompiled_source_files,
                 check_updated_source_files, filter_source_files,
@@ -250,31 +250,7 @@ impl Command {
                                 .await?,
                         );
 
-                    // copy libraries
-                    for binary in project.config.binaries() {
-                        if binary.target_type == TargetType::Dylib
-                            || binary.target_type == TargetType::StaticLib
-                        {
-                            let binary_name = binary.binary_name()?;
-                            let source_library_path = project.paths.project_path.join(
-                                project
-                                    .package
-                                    .binaries()
-                                    .target_release(self.release)
-                                    .join(&binary_name),
-                            );
-                            let target_library_path = project_paths.project_path.join(
-                                package_config
-                                    .binaries()
-                                    .target_release(self.release)
-                                    .join(binary_name),
-                            );
-
-                            if source_library_path.exists() {
-                                copy(source_library_path, target_library_path).await?;
-                            }
-                        }
-                    }
+                    copy_libraries(project, project_paths, package_config, self.release).await?;
                 }
             }
         }
@@ -364,6 +340,45 @@ impl Command {
 
         Ok(static_lflags)
     }
+}
+
+#[async_recursion]
+async fn copy_libraries(
+    project: &DependencyProject,
+    project_paths: &ProjectPaths,
+    package_config: &Package,
+    release: bool,
+) -> anyhow::Result<()> {
+    for dependency in project.dependencies.values() {
+        if let Some(project) = &dependency.project {
+            copy_libraries(project, project_paths, package_config, release).await?;
+        }
+    }
+
+    for binary in project.config.binaries() {
+        if binary.target_type == TargetType::Dylib {
+            let binary_name = binary.binary_name()?;
+            let source_library_path = project.paths.project_path.join(
+                project
+                    .package
+                    .binaries()
+                    .target_release(release)
+                    .join(&binary_name),
+            );
+            let target_library_path = project_paths.project_path.join(
+                package_config
+                    .binaries()
+                    .target_release(release)
+                    .join(binary_name),
+            );
+
+            if source_library_path.exists() {
+                copy(source_library_path, target_library_path).await?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn print_compile(project_paths: &ProjectPaths, package_config: &Package) -> anyhow::Result<()> {
