@@ -1,0 +1,8 @@
+[package]
+name = "nestead_staticlib"
+version = "0.1.0"
+
+[[bin]]
+name = "static"
+path = "src/lib.c"
+type = "staticlib"

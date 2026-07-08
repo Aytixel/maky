@@ -1,7 +1,12 @@
 [package]
 version = "0.1.0"
 
+[dependencies]
+nestead_dynlib = { version = "0.1.0", path = "../nestead_dynlib", lib = ["dyn"] }
+nestead_staticlib = { version = "0.1.0", path = "../nestead_staticlib", lib = ["static"] }
+
 [[bin]]
 name = "test"
 path = "src/lib.c"
 type = "staticlib"
+import = ["nestead_dynlib", "nestead_staticlib"]
