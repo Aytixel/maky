@@ -12,7 +12,7 @@ use crossterm::{
     style::{Print, Stylize},
 };
 use tokio::{
-    fs::{copy, create_dir, create_dir_all},
+    fs::{create_dir, create_dir_all},
     time::Instant,
 };
 
@@ -30,7 +30,7 @@ use crate::{
         },
     },
     config::{self, Package, Target, TargetType},
-    helpers::{self, PathTarget, ProjectPaths},
+    helpers::{self, PathTarget, ProjectPaths, symlink},
 };
 
 #[derive(clap::Args, Debug, Clone)]
@@ -250,7 +250,7 @@ impl Command {
                                 .await?,
                         );
 
-                    copy_libraries(project, project_paths, package_config, self.release).await?;
+                    symlink_libraries(project, project_paths, package_config, self.release).await?;
                 }
             }
         }
@@ -343,7 +343,7 @@ impl Command {
 }
 
 #[async_recursion]
-async fn copy_libraries(
+async fn symlink_libraries(
     project: &DependencyProject,
     project_paths: &ProjectPaths,
     package_config: &Package,
@@ -351,7 +351,7 @@ async fn copy_libraries(
 ) -> anyhow::Result<()> {
     for dependency in project.dependencies.values() {
         if let Some(project) = &dependency.project {
-            copy_libraries(project, project_paths, package_config, release).await?;
+            symlink_libraries(project, project_paths, package_config, release).await?;
         }
     }
 
@@ -373,7 +373,7 @@ async fn copy_libraries(
             );
 
             if source_library_path.exists() {
-                copy(source_library_path, target_library_path).await?;
+                symlink(source_library_path, target_library_path).await?;
             }
         }
     }

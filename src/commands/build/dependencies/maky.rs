@@ -9,13 +9,13 @@ use async_walkdir::WalkDir;
 use futures_lite::StreamExt;
 use git2::Repository;
 use semver::VersionReq;
-use tokio::fs::{copy, create_dir_all};
+use tokio::fs::{create_dir_all, read_dir};
 
 use crate::{
     commands::build::dependencies::{Dependency, DependencyProject},
     config::MakyPathDependency,
     file::is_header_file,
-    helpers::{self, PathTarget},
+    helpers::{self, PathTarget, symlink},
 };
 
 fn fetch_default_branch(
@@ -136,7 +136,7 @@ pub async fn get_maky_dependency(
             .to_string(),
     ];
 
-    copy_headers(
+    symlink_header_files(
         project_package
             .includes
             .iter()
@@ -148,8 +148,8 @@ pub async fn get_maky_dependency(
             .join(name),
     )
     .await?;
-    copy_headers(
-        vec![project_paths.maky_includes_path.join("deps")],
+    symlink_header_directories(
+        project_paths.maky_includes_path.join("deps"),
         parent_project_paths.maky_includes_path.join("deps"),
     )
     .await?;
@@ -168,16 +168,16 @@ pub async fn get_maky_dependency(
     })
 }
 
-async fn copy_headers(
-    includes: Vec<PathBuf>,
-    includes_output_directory: PathBuf,
+async fn symlink_header_files(
+    input_directories: Vec<PathBuf>,
+    output_directory: PathBuf,
 ) -> anyhow::Result<()> {
-    for include in includes {
-        if !include.exists() {
+    for input in input_directories {
+        if !input.exists() {
             continue;
         }
 
-        let mut entries = WalkDir::new(&include);
+        let mut entries = WalkDir::new(&input);
 
         while let Some(entry) = entries.try_next().await? {
             let path = entry.path();
@@ -191,11 +191,36 @@ async fn copy_headers(
             };
 
             if is_header_file(extension) {
-                let new_path = includes_output_directory.join(path.strip_prefix(&include)?);
+                let new_path = output_directory.join(path.strip_prefix(&input)?);
 
                 create_dir_all(new_path.parent().unwrap()).await?;
-                copy(path, new_path).await?;
+                symlink(path, new_path).await?;
             }
+        }
+    }
+
+    Ok(())
+}
+
+async fn symlink_header_directories(
+    input_directory: PathBuf,
+    output_directory: PathBuf,
+) -> anyhow::Result<()> {
+    create_dir_all(&output_directory).await?;
+
+    if input_directory.exists() {
+        let mut directory_reader = read_dir(&input_directory).await?;
+
+        while let Some(entry) = directory_reader.next_entry().await? {
+            let path = entry.path();
+
+            if !path.is_dir() {
+                continue;
+            }
+
+            let new_path = output_directory.join(path.strip_prefix(&input_directory)?);
+
+            symlink(path, new_path).await?;
         }
     }
 

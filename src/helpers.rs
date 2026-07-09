@@ -1,7 +1,10 @@
-use std::path::{Path, PathBuf, absolute};
+use std::{
+    io,
+    path::{Path, PathBuf, absolute},
+};
 
 use anyhow::anyhow;
-use tokio::fs::read_to_string;
+use tokio::fs::{read_to_string, remove_dir_all};
 
 use crate::config;
 
@@ -102,4 +105,17 @@ impl ProjectPaths {
 
         Ok(toml::from_str(&file)?)
     }
+}
+
+pub async fn symlink(original: impl AsRef<Path>, link: impl AsRef<Path>) -> io::Result<()> {
+    remove_dir_all(&link).await.ok();
+
+    #[cfg(target_family = "windows")]
+    if original.as_ref().is_file() {
+        tokio::fs::symlink_file(original, link).await
+    } else {
+        tokio::fs::symlink_dir(original, link).await
+    }
+    #[cfg(target_family = "unix")]
+    tokio::fs::symlink(original, link).await
 }
