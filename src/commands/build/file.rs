@@ -321,11 +321,11 @@ pub fn filter_header_files(mut header_files: HashSet<PathBuf>) -> HashSet<PathBu
     header_files
 }
 
-pub async fn get_targets_source_files(
-    targets: Vec<Target>,
+pub async fn get_targets_source_files<'a>(
+    targets: &'a [Target],
     source_files: &HashMap<PathBuf, SourceFile>,
     source_files_reverse_dependencies: &HashMap<PathBuf, SourceFile>,
-) -> anyhow::Result<Vec<(Target, HashSet<PathBuf>)>> {
+) -> anyhow::Result<Vec<(&'a Target, HashSet<PathBuf>)>> {
     let mut targets_source_files = Vec::new();
 
     for target in targets {

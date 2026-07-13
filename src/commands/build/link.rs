@@ -32,7 +32,7 @@ const LIBRARIES_PATHS: &[&'static str] = &[
 pub async fn link(
     project_paths: &helpers::ProjectPaths,
     package_config: &config::Package,
-    targets_source_files: &Vec<(Target, HashSet<PathBuf>)>,
+    targets_source_files: &Vec<(&Target, HashSet<PathBuf>)>,
     source_files: &HashMap<PathBuf, SourceFile>,
     targets_lflags: &HashMap<String, Vec<String>>,
     release: bool,
@@ -68,7 +68,7 @@ pub async fn link(
             .await?
         };
 
-        let target = target.clone();
+        let target = (*target).clone();
 
         commands.spawn(async move { Ok((target, command.output().await?)) });
     }

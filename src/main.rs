@@ -6,6 +6,7 @@ mod helpers;
 use std::{
     fmt::Display,
     io::{self, stderr},
+    process::ExitCode,
 };
 
 use clap::{Parser, Subcommand};
@@ -29,13 +30,13 @@ enum SubCommand {
         command: commands::init::Command,
     },
 
-    /// Build files
+    /// Compile a local package and all of its dependencies
     Build {
         #[clap(flatten)]
         command: commands::build::Command,
     },
 
-    /// Build files then run the specified file
+    /// Run a binary or example of the local package
     Run {
         #[clap(flatten)]
         command: commands::run::Command,
@@ -49,25 +50,27 @@ enum SubCommand {
 }
 
 #[tokio::main]
-async fn main() -> io::Result<()> {
-    if let Err(error) = execute_command().await {
-        print_error(error)?;
-    }
-
-    Ok(())
+async fn main() -> io::Result<ExitCode> {
+    Ok(match execute_command().await {
+        Ok(result) => result,
+        Err(error) => {
+            print_error(error)?;
+            ExitCode::SUCCESS
+        }
+    })
 }
 
-async fn execute_command() -> anyhow::Result<()> {
+async fn execute_command() -> anyhow::Result<ExitCode> {
     let command = Command::parse();
 
     match command.subcommand {
         SubCommand::Init { command } => command.execute().await?,
         SubCommand::Build { command } => command.execute().await?,
-        SubCommand::Run { command } => todo!(),
+        SubCommand::Run { command } => return Ok(command.execute().await?),
         SubCommand::Clean { command } => command.execute().await?,
     }
 
-    return Ok(());
+    return Ok(ExitCode::SUCCESS);
 }
 
 fn print_error<T: Display>(error: T) -> io::Result<()> {

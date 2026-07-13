@@ -37,58 +37,71 @@ use crate::{
 pub struct Command {
     /// Build only this package's library
     #[arg(long, help_heading = TARGET_SELECTION)]
-    lib: bool,
+    pub lib: bool,
 
     /// Build all binaries
     #[arg(long, help_heading = TARGET_SELECTION)]
-    bins: bool,
+    pub bins: bool,
 
     /// Build only the specified binary
     #[arg(long, value_name = "NAME", help_heading = TARGET_SELECTION)]
-    bin: Vec<String>,
+    pub bin: Vec<String>,
 
     /// Build all examples
     #[arg(long, help_heading = TARGET_SELECTION)]
-    examples: bool,
+    pub examples: bool,
 
     /// Build only the specified example
     #[arg(long, value_name = "NAME", help_heading = TARGET_SELECTION)]
-    example: Vec<String>,
+    pub example: Vec<String>,
 
     /// Build all tests
     #[arg(long, help_heading = TARGET_SELECTION)]
-    tests: bool,
+    pub tests: bool,
 
     /// Build only the specified test target
     #[arg(long, value_name = "NAME", help_heading = TARGET_SELECTION)]
-    test: Vec<String>,
+    pub test: Vec<String>,
 
     /// Build all benches
     #[arg(long, help_heading = TARGET_SELECTION)]
-    benches: bool,
+    pub benches: bool,
 
     /// Build only the specified bench target
     #[arg(long, value_name = "NAME", help_heading = TARGET_SELECTION)]
-    bench: Vec<String>,
+    pub bench: Vec<String>,
 
     /// Build all targets
     #[arg(long, help_heading = TARGET_SELECTION)]
-    all_targets: bool,
+    pub all_targets: bool,
 
     /// Build artifacts in release mode, with optimizations
     #[arg(short, long, help_heading = COMPILATION_OPTIONS)]
-    release: bool,
+    pub release: bool,
 
     /// Update dependencies
     #[arg(short, long, help_heading = COMPILATION_OPTIONS)]
-    update: bool,
+    pub update: bool,
 
     #[command(flatten)]
-    project: commands::ProjectArgs,
+    pub project: commands::ProjectArgs,
 }
 
 impl Command {
     pub async fn execute(self) -> anyhow::Result<()> {
+        self.build().await?;
+        Ok(())
+    }
+
+    pub async fn build(
+        self,
+    ) -> anyhow::Result<(
+        config::Project,
+        helpers::ProjectPaths,
+        config::Package,
+        Vec<Target>,
+        Vec<String>,
+    )> {
         let time = Instant::now();
         let project_paths = helpers::paths(
             self.project.manifest.as_ref().map(PathBuf::as_path),
@@ -104,13 +117,14 @@ impl Command {
         )
         .await?;
 
-        self.build_package(
-            &project_config,
-            &project_paths,
-            &package_config,
-            &dependencies,
-        )
-        .await?;
+        let (targets, lflags) = self
+            .build_package(
+                &project_config,
+                &project_paths,
+                &package_config,
+                &dependencies,
+            )
+            .await?;
 
         execute!(
             stderr(),
@@ -127,7 +141,13 @@ impl Command {
             Print(format!(" target(s) in {:.2?}\n", time.elapsed()))
         )?;
 
-        Ok(())
+        Ok((
+            project_config,
+            project_paths,
+            package_config,
+            targets,
+            lflags,
+        ))
     }
 
     #[async_recursion]
@@ -137,7 +157,7 @@ impl Command {
         project_paths: &helpers::ProjectPaths,
         package_config: &config::Package,
         dependencies: &HashMap<String, Dependency>,
-    ) -> anyhow::Result<Vec<String>> {
+    ) -> anyhow::Result<(Vec<Target>, Vec<String>)> {
         // initialize directories
         if !project_paths.maky_path.is_dir() {
             create_dir(&project_paths.maky_path).await?;
@@ -247,7 +267,8 @@ impl Command {
                                     &project.package,
                                     &project.dependencies,
                                 )
-                                .await?,
+                                .await?
+                                .1,
                         );
 
                     symlink_libraries(project, project_paths, package_config, self.release).await?;
@@ -298,7 +319,7 @@ impl Command {
         }
 
         let mut targets_source_files =
-            get_targets_source_files(targets, &source_files, &source_files_reverse_dependencies)
+            get_targets_source_files(&targets, &source_files, &source_files_reverse_dependencies)
                 .await?;
         let mut static_lflags = Vec::new();
         let targets_lflags: HashMap<String, Vec<String>> = targets_source_files
@@ -338,7 +359,7 @@ impl Command {
             .await?;
         }
 
-        Ok(static_lflags)
+        Ok((targets, static_lflags))
     }
 }
 
