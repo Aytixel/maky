@@ -30,6 +30,7 @@ use crate::{
         },
     },
     config::{self, Package, Target, TargetType},
+    git::GitRepositoryInfo,
     helpers::{self, PathTarget, ProjectPaths, symlink},
 };
 
@@ -123,6 +124,7 @@ impl Command {
                 &project_paths,
                 &package_config,
                 &dependencies,
+                None,
             )
             .await?;
 
@@ -157,6 +159,7 @@ impl Command {
         project_paths: &helpers::ProjectPaths,
         package_config: &config::Package,
         dependencies: &HashMap<String, Dependency>,
+        git: Option<&GitRepositoryInfo>,
     ) -> anyhow::Result<(Vec<Target>, Vec<String>)> {
         // initialize directories
         if !project_paths.maky_path.is_dir() {
@@ -266,6 +269,7 @@ impl Command {
                                     &project.paths,
                                     &project.package,
                                     &project.dependencies,
+                                    dependency.git.as_ref(),
                                 )
                                 .await?
                                 .1,
@@ -305,7 +309,7 @@ impl Command {
         let updated_source_files = filter_source_files(updated_source_files);
 
         if !updated_source_files.is_empty() {
-            print_compile(project_paths, package_config)?;
+            print_compile(project_paths, package_config, git)?;
 
             compile(
                 project_paths,
@@ -345,7 +349,7 @@ impl Command {
 
         if !targets_source_files.is_empty() {
             if updated_source_files.is_empty() {
-                print_compile(project_paths, package_config)?;
+                print_compile(project_paths, package_config, git)?;
             }
 
             link(
@@ -402,7 +406,11 @@ async fn symlink_libraries(
     Ok(())
 }
 
-fn print_compile(project_paths: &ProjectPaths, package_config: &Package) -> anyhow::Result<()> {
+fn print_compile(
+    project_paths: &ProjectPaths,
+    package_config: &Package,
+    git: Option<&GitRepositoryInfo>,
+) -> anyhow::Result<()> {
     Ok(execute!(
         stderr(),
         Print("   Compiling ".dark_green().bold()),
@@ -420,6 +428,10 @@ fn print_compile(project_paths: &ProjectPaths, package_config: &Package) -> anyh
                 .map(|version| format!("v{version} "))
                 .unwrap_or_default()
         ),
-        Print(format!("({})\n", project_paths.project_path.display()))
+        Print(format!(
+            "({})\n",
+            git.map(|git| git.url.to_string())
+                .unwrap_or_else(|| project_paths.project_path.display().to_string())
+        ))
     )?)
 }

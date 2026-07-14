@@ -137,30 +137,32 @@ impl Command {
             ]
         };
 
-        for dependency in project_config.dependencies().values().flatten() {
-            let Dependency {
-                dependency: TypedDependency::Maky { path, .. },
-                ..
-            } = dependency
-            else {
-                continue;
-            };
+        for (name, dependency_targets) in project_config.dependencies() {
+            for dependency_target in dependency_targets {
+                let Dependency {
+                    dependency: TypedDependency::Maky { path, .. },
+                    ..
+                } = dependency_target
+                else {
+                    continue;
+                };
 
-            let (project_path, _) = path.path(&project_paths)?;
+                let (project_path, _) = path.path(&project_paths, &name)?;
 
-            if project_path.exists() {
-                let project_paths = helpers::paths(Some(&project_path), self.release)?;
-                let project_config = project_paths.config().await?;
-                let package_config = project_config.package(&project_paths.project_path)?;
+                if project_path.exists() {
+                    let project_paths = helpers::paths(Some(&project_path), self.release)?;
+                    let project_config = project_paths.config().await?;
+                    let package_config = project_config.package(&project_paths.project_path)?;
 
-                self.clone()
-                    .clean_package(
-                        project_config,
-                        project_paths,
-                        package_config,
-                        metadata_sender.clone(),
-                    )
-                    .await?;
+                    self.clone()
+                        .clean_package(
+                            project_config,
+                            project_paths,
+                            package_config,
+                            metadata_sender.clone(),
+                        )
+                        .await?;
+                }
             }
         }
 

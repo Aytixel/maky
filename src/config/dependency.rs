@@ -8,6 +8,7 @@ use tuple_vec_map;
 
 use crate::{
     config::{VecOrValue, replace_path_templates, require::Require},
+    git::GitRepositoryInfo,
     helpers,
 };
 
@@ -70,13 +71,11 @@ impl MakyPathDependency {
     pub fn path(
         &self,
         project_paths: &helpers::ProjectPaths,
-    ) -> anyhow::Result<(PathBuf, Option<(GitUrl, Option<String>, PathBuf)>)> {
+        name: &str,
+    ) -> anyhow::Result<(PathBuf, Option<GitRepositoryInfo>)> {
         Ok(match self {
             MakyPathDependency::Git { url, rev, path } => {
-                let git_url = GitUrl::parse(&url)?;
-                let project_path = project_paths
-                    .maky_dependencies_path
-                    .join(git_url.name.clone());
+                let project_path = project_paths.maky_dependencies_path.join(name);
 
                 (
                     if let Some(path) = path {
@@ -84,7 +83,11 @@ impl MakyPathDependency {
                     } else {
                         project_path.clone()
                     },
-                    Some((git_url, rev.clone(), project_path)),
+                    Some(GitRepositoryInfo {
+                        url: GitUrl::parse(&url)?,
+                        rev: rev.clone(),
+                        path: project_path,
+                    }),
                 )
             }
             MakyPathDependency::Local { path } => (project_paths.project_path.join(path), None),

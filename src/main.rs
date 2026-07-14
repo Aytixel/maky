@@ -1,6 +1,7 @@
 mod commands;
 mod config;
 mod file;
+mod git;
 mod helpers;
 
 use std::{

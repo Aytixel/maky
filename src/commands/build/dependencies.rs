@@ -8,7 +8,9 @@ use tokio::fs::remove_dir_all;
 
 use crate::{
     commands::build::dependencies::{maky::get_maky_dependency, pkg::get_pkg_dependency},
-    config, helpers, print_warning,
+    config,
+    git::GitRepositoryInfo,
+    helpers, print_warning,
 };
 
 static PKG_CONFIG_COMMAND: LazyLock<which::Result<PathBuf>> = LazyLock::new(|| {
@@ -40,6 +42,8 @@ pub struct Dependency {
     pub directories: Vec<String>,
     pub libraries: Vec<String>,
     pub lflags: Vec<String>,
+
+    pub git: Option<GitRepositoryInfo>,
 }
 
 impl Dependency {
@@ -136,6 +140,7 @@ impl Dependency {
                                 directories,
                                 libraries,
                                 lflags: dependency_target.lflags,
+                                git: None,
                             },
                         );
                         break;
