@@ -3,6 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use auth_git2::GitAuthenticator;
 use git2::Repository;
 use parse_git_url::GitUrl;
 
@@ -14,13 +15,20 @@ pub struct GitRepositoryInfo {
 }
 
 pub fn pull(git: &GitRepositoryInfo, update: bool) -> anyhow::Result<()> {
+    let auth = GitAuthenticator::default()
+        .add_default_ssh_keys()
+        .add_default_username()
+        .try_ssh_agent(true)
+        .try_cred_helper(true)
+        .try_password_prompt(3);
+
     let repository = if git.path.is_dir() {
         Repository::open(&git.path)?
     } else {
-        Repository::clone_recurse(&git.url.to_string(), &git.path)?
+        auth.clone_repo(&git.url.to_string(), &git.path)?
     };
 
-    let default_branch = fetch_default_branch(&repository, &git.path, update)?;
+    let default_branch = fetch_default_branch(&auth, &repository, &git.path, update)?;
     let rev = git.rev.clone().unwrap_or(default_branch);
 
     let (object, reference) = repository.revparse_ext(&rev)?;
@@ -53,6 +61,7 @@ pub fn pull(git: &GitRepositoryInfo, update: bool) -> anyhow::Result<()> {
 }
 
 fn fetch_default_branch(
+    auth: &GitAuthenticator,
     repository: &Repository,
     project_path: &Path,
     update: bool,
@@ -62,7 +71,7 @@ fn fetch_default_branch(
     if update || !default_branch_path.exists() {
         let mut remote = repository.find_remote("origin")?;
 
-        remote.fetch(&[] as &[&str], None, None)?;
+        auth.fetch(repository, &mut remote, &[] as &[&str], None)?;
 
         let default_branch = remote
             .default_branch()?
