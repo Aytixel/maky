@@ -136,6 +136,66 @@ impl Project {
             .collect()
     }
 
+    pub fn targets_selection(
+        &self,
+        lib: bool,
+        bins: bool,
+        bin: &[String],
+        examples: bool,
+        example: &[String],
+        tests: bool,
+        test: &[String],
+        benches: bool,
+        bench: &[String],
+        all_targets: bool,
+    ) -> Vec<Target> {
+        let default_targets = !lib
+            && !bins
+            && bin.is_empty()
+            && !examples
+            && example.is_empty()
+            && !tests
+            && test.is_empty()
+            && !benches
+            && bench.is_empty();
+
+        self.binaries()
+            .into_iter()
+            .filter(|target| {
+                default_targets
+                    || all_targets
+                    || (bins && target.target_type == TargetType::Bin)
+                    || (lib
+                        && (target.target_type == TargetType::Dylib
+                            || target.target_type == TargetType::StaticLib))
+                    || (!bin.is_empty()
+                        && (target.name().map_or(false, |name| bin.contains(&name))
+                            || bin.contains(&target.path)))
+            })
+            .chain(self.examples().into_iter().filter(|target| {
+                all_targets
+                    || examples
+                    || (!example.is_empty()
+                        && (target.name().map_or(false, |name| example.contains(&name))
+                            || example.contains(&target.path)))
+            }))
+            .chain(self.tests().into_iter().filter(|target| {
+                all_targets
+                    || tests
+                    || (!test.is_empty()
+                        && (target.name().map_or(false, |name| test.contains(&name))
+                            || test.contains(&target.path)))
+            }))
+            .chain(self.benchmarks().into_iter().filter(|target| {
+                all_targets
+                    || benches
+                    || (!bench.is_empty()
+                        && (target.name().map_or(false, |name| bench.contains(&name))
+                            || bench.contains(&target.path)))
+            }))
+            .collect()
+    }
+
     pub fn binaries(&self) -> Vec<Target> {
         self.binaries
             .iter()

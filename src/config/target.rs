@@ -7,7 +7,7 @@ use serde_inline_default::serde_inline_default;
 use crate::config::{replace_path_templates, require::Require};
 
 #[serde_inline_default]
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Target {
     #[serde(default)]
     pub(in crate::config) require: Require,
@@ -54,7 +54,7 @@ impl Target {
     }
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum TargetType {
     Bin,

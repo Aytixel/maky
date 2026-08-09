@@ -6,32 +6,31 @@ mod link;
 use std::{collections::HashMap, io::stderr, path::PathBuf};
 
 use async_recursion::async_recursion;
-use compile::compile;
 use crossterm::{
     execute,
     style::{Print, Stylize},
 };
-use tokio::{
-    fs::{create_dir, create_dir_all},
-    time::Instant,
-};
+use tokio::time::Instant;
+
+pub use compile::compile;
 
 use crate::{
     commands::{
         self, COMPILATION_OPTIONS, TARGET_SELECTION,
-        build::{
-            dependencies::{Dependency, DependencyProject},
-            file::{
-                add_source_files_dependencies, add_uncompiled_source_files,
-                check_updated_source_files, filter_source_files,
-                get_source_files_reverse_dependencies, get_targets_source_files, scan_source_files,
-            },
-            link::{link, link_flags},
-        },
+        build::link::{link, link_flags},
     },
     config::{self, Package, Target, TargetType},
     git::GitRepositoryInfo,
     helpers::{self, PathTarget, ProjectPaths, symlink},
+};
+
+pub use crate::commands::build::{
+    dependencies::{Dependency, DependencyProject},
+    file::{
+        add_source_files_dependencies, add_uncompiled_source_files, check_updated_source_files,
+        filter_source_files, get_source_files_reverse_dependencies, get_targets_source_files,
+        scan_source_files,
+    },
 };
 
 #[derive(clap::Args, Debug, Clone)]
@@ -161,82 +160,22 @@ impl Command {
         dependencies: &HashMap<String, Dependency>,
         git: Option<&GitRepositoryInfo>,
     ) -> anyhow::Result<(Vec<Target>, Vec<String>)> {
-        // initialize directories
-        if !project_paths.maky_path.is_dir() {
-            create_dir(&project_paths.maky_path).await?;
-        }
+        project_paths
+            .init_directories(&package_config, self.release)
+            .await?;
 
-        if !project_paths.maky_release_path.is_dir() {
-            create_dir(&project_paths.maky_release_path).await?;
-        }
-
-        if !project_paths.maky_ast_path.is_dir() {
-            create_dir(&project_paths.maky_ast_path).await?;
-        }
-
-        let binaries_path = project_paths
-            .project_path
-            .join(&package_config.binaries().target_release(self.release));
-        if !binaries_path.is_dir() {
-            create_dir_all(&binaries_path).await?;
-        }
-
-        let objects_path = project_paths
-            .project_path
-            .join(&package_config.objects().target_release(self.release));
-        if !objects_path.is_dir() {
-            create_dir_all(&objects_path).await?;
-        }
-
-        let default_targets = !self.lib
-            && !self.bins
-            && self.bin.is_empty()
-            && !self.examples
-            && self.example.is_empty()
-            && !self.tests
-            && self.test.is_empty()
-            && !self.benches
-            && self.bench.is_empty();
-        let targets: Vec<Target> = project_config
-            .binaries()
-            .into_iter()
-            .filter(|binary| {
-                default_targets
-                    || self.all_targets
-                    || (self.bins && binary.target_type == TargetType::Bin)
-                    || (self.lib
-                        && (binary.target_type == TargetType::Dylib
-                            || binary.target_type == TargetType::StaticLib))
-                    || (!self.bin.is_empty()
-                        && (binary.name().map_or(false, |name| self.bin.contains(&name))
-                            || self.bin.contains(&binary.path)))
-            })
-            .chain(project_config.examples().into_iter().filter(|example| {
-                self.all_targets
-                    || self.examples
-                    || (!self.example.is_empty()
-                        && (example
-                            .name()
-                            .map_or(false, |name| self.example.contains(&name))
-                            || self.example.contains(&example.path)))
-            }))
-            .chain(project_config.tests().into_iter().filter(|test| {
-                self.all_targets
-                    || self.tests
-                    || (!self.test.is_empty()
-                        && (test.name().map_or(false, |name| self.test.contains(&name))
-                            || self.test.contains(&test.path)))
-            }))
-            .chain(project_config.benchmarks().into_iter().filter(|benchmark| {
-                self.all_targets
-                    || self.benches
-                    || (!self.bench.is_empty()
-                        && (benchmark
-                            .name()
-                            .map_or(false, |name| self.bench.contains(&name))
-                            || self.bench.contains(&benchmark.path)))
-            }))
-            .collect();
+        let targets = project_config.targets_selection(
+            self.lib,
+            self.bins,
+            &self.bin,
+            self.examples,
+            &self.example,
+            self.tests,
+            &self.test,
+            self.benches,
+            &self.bench,
+            self.all_targets,
+        );
 
         // build maky dependencies first
         let mut dependencies_lflags = HashMap::new();
@@ -280,20 +219,11 @@ impl Command {
             }
         }
 
+        let binaries_path = project_paths.binaries_path(package_config, self.release);
+        let objects_path = project_paths.objects_path(package_config, self.release);
+        let include_paths = project_paths.include_paths(package_config);
+
         // process source and include files
-        let include_paths = {
-            let mut include_paths: Vec<PathBuf> = package_config
-                .includes
-                .iter()
-                .chain(package_config.sources.iter())
-                .map(|path| project_paths.project_path.join(path))
-                .collect();
-
-            include_paths.push(project_paths.maky_includes_path.clone());
-
-            include_paths
-        };
-
         let source_files =
             scan_source_files(&targets, project_paths, package_config, &include_paths).await?;
         let source_files_reverse_dependencies =
@@ -318,6 +248,7 @@ impl Command {
                 &updated_source_files,
                 &source_files,
                 self.release,
+                &[],
             )
             .await?;
         }
@@ -340,7 +271,7 @@ impl Command {
             })
             .collect::<anyhow::Result<_>>()?;
 
-        targets_source_files.retain(|(target, source_files)| {
+        targets_source_files.retain(|target, source_files| {
             !source_files.is_disjoint(&updated_source_files)
                 || (target.binary_name().map_or(false, |binary_name| {
                     !binaries_path.join(binary_name).exists()

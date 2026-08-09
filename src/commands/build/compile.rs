@@ -21,6 +21,7 @@ pub async fn compile(
     updated_source_files: &HashSet<PathBuf>,
     source_files: &HashMap<PathBuf, SourceFile>,
     release: bool,
+    extra_cflags: &[String],
 ) -> anyhow::Result<()> {
     if updated_source_files.is_empty() {
         return Ok(());
@@ -58,6 +59,7 @@ pub async fn compile(
             .current_dir(&project_paths.project_path)
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
+            .args(extra_cflags)
             .arg("-fdiagnostics-color=always")
             .arg("-fpic");
 
@@ -86,8 +88,10 @@ pub async fn compile(
 
     while let Some(command) = commands.join_next().await {
         let (source_file, output) = command??;
+        let errors = String::from_utf8_lossy(&output.stderr);
+        let errors = errors.trim();
 
-        if !output.status.success() {
+        if !errors.is_empty() {
             print_error(format!(
                 "{}\n\n{}\n",
                 project_paths.project_path.join(source_file).display(),

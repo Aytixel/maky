@@ -325,8 +325,8 @@ pub async fn get_targets_source_files<'a>(
     targets: &'a [Target],
     source_files: &HashMap<PathBuf, SourceFile>,
     source_files_reverse_dependencies: &HashMap<PathBuf, SourceFile>,
-) -> anyhow::Result<Vec<(&'a Target, HashSet<PathBuf>)>> {
-    let mut targets_source_files = Vec::new();
+) -> anyhow::Result<HashMap<&'a Target, HashSet<PathBuf>>> {
+    let mut targets_source_files = HashMap::new();
 
     for target in targets {
         let target_path = PathBuf::from(target.path.clone());
@@ -367,7 +367,7 @@ pub async fn get_targets_source_files<'a>(
             .collect();
 
         target_source_files.insert(target_path);
-        targets_source_files.push((target, target_source_files));
+        targets_source_files.insert(target, target_source_files);
     }
 
     Ok(targets_source_files)

@@ -32,7 +32,7 @@ const LIBRARIES_PATHS: &[&'static str] = &[
 pub async fn link(
     project_paths: &helpers::ProjectPaths,
     package_config: &config::Package,
-    targets_source_files: &Vec<(&Target, HashSet<PathBuf>)>,
+    targets_source_files: &HashMap<&Target, HashSet<PathBuf>>,
     source_files: &HashMap<PathBuf, SourceFile>,
     targets_lflags: &HashMap<String, Vec<String>>,
     release: bool,

@@ -4,9 +4,9 @@ use std::{
 };
 
 use anyhow::anyhow;
-use tokio::fs::{read_to_string, remove_dir_all};
+use tokio::fs::{create_dir, create_dir_all, read_to_string, remove_dir_all};
 
-use crate::config;
+use crate::config::{self, Package};
 
 pub trait PathTarget {
     fn target_release(&self, release: bool) -> PathBuf;
@@ -104,6 +104,59 @@ impl ProjectPaths {
         let file = read_to_string(&self.manifest_file).await?;
 
         Ok(toml::from_str(&file)?)
+    }
+
+    pub async fn init_directories(
+        &self,
+        package_config: &Package,
+        release: bool,
+    ) -> anyhow::Result<()> {
+        if !self.maky_path.is_dir() {
+            create_dir(&self.maky_path).await?;
+        }
+
+        if !self.maky_release_path.is_dir() {
+            create_dir(&self.maky_release_path).await?;
+        }
+
+        if !self.maky_ast_path.is_dir() {
+            create_dir(&self.maky_ast_path).await?;
+        }
+
+        let binaries_path = self.binaries_path(package_config, release);
+        if !binaries_path.is_dir() {
+            create_dir_all(&binaries_path).await?;
+        }
+
+        let objects_path = self.objects_path(package_config, release);
+        if !objects_path.is_dir() {
+            create_dir_all(&objects_path).await?;
+        }
+
+        Ok(())
+    }
+
+    pub fn binaries_path(&self, package_config: &Package, release: bool) -> PathBuf {
+        self.project_path
+            .join(&package_config.binaries().target_release(release))
+    }
+
+    pub fn objects_path(&self, package_config: &Package, release: bool) -> PathBuf {
+        self.project_path
+            .join(&package_config.objects().target_release(release))
+    }
+
+    pub fn include_paths(&self, package_config: &Package) -> Vec<PathBuf> {
+        let mut paths: Vec<PathBuf> = package_config
+            .includes
+            .iter()
+            .chain(package_config.sources.iter())
+            .map(|path| self.project_path.join(path))
+            .collect();
+
+        paths.push(self.maky_includes_path.clone());
+
+        paths
     }
 }
 

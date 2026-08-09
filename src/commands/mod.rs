@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 pub mod build;
+pub mod check;
 pub mod clean;
 pub mod init;
 pub mod run;
@@ -12,6 +13,6 @@ const MANIFEST_OPTIONS: &str = "Manifest Options";
 #[derive(clap::Args, Debug, Clone)]
 pub struct ProjectArgs {
     /// Path to Maky.toml
-    #[arg(long="manifest-path", value_name="PATH", help_heading = MANIFEST_OPTIONS)]
+    #[arg(short, long="manifest-path", value_name="PATH", help_heading = MANIFEST_OPTIONS)]
     manifest: Option<PathBuf>,
 }

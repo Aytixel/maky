@@ -2,7 +2,7 @@ use std::{cmp, collections::HashSet, env, fmt, sync::LazyLock};
 
 use serde::Deserialize;
 
-#[derive(Deserialize, Default, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Default, Clone, PartialEq, Eq, Hash)]
 #[serde(untagged)]
 pub(in crate::config) enum Require {
     Value(String),
