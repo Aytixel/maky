@@ -73,7 +73,6 @@ pub fn paths(manifest: Option<&Path>, release: bool) -> anyhow::Result<ProjectPa
     let maky_hash_path = maky_release_path.join("hash");
     let maky_includes_path = maky_path.join("include");
     let maky_dependencies_path = maky_path.join("deps");
-    let maky_ast_path = maky_path.join("ast");
 
     Ok(ProjectPaths {
         manifest_file,
@@ -83,7 +82,6 @@ pub fn paths(manifest: Option<&Path>, release: bool) -> anyhow::Result<ProjectPa
         maky_hash_path,
         maky_includes_path,
         maky_dependencies_path,
-        maky_ast_path,
     })
 }
 
@@ -96,7 +94,6 @@ pub struct ProjectPaths {
     pub maky_hash_path: PathBuf,
     pub maky_includes_path: PathBuf,
     pub maky_dependencies_path: PathBuf,
-    pub maky_ast_path: PathBuf,
 }
 
 impl ProjectPaths {
@@ -117,10 +114,6 @@ impl ProjectPaths {
 
         if !self.maky_release_path.is_dir() {
             create_dir(&self.maky_release_path).await?;
-        }
-
-        if !self.maky_ast_path.is_dir() {
-            create_dir(&self.maky_ast_path).await?;
         }
 
         let binaries_path = self.binaries_path(package_config, release);

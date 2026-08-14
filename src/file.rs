@@ -1,7 +1,6 @@
 use std::{ffi::OsStr, path::Path};
 
 use blake3::Hash;
-use nanoserde::{DeJson, SerJson};
 use tokio::fs::read_to_string;
 
 #[derive(Debug, Clone, Copy)]
@@ -36,7 +35,7 @@ pub fn is_header_file(extension: &OsStr) -> bool {
         || extension == "h++"
 }
 
-#[derive(Debug, Clone, DeJson, SerJson)]
+#[derive(Debug, Clone)]
 pub struct Node {
     pub name: String,
     pub start: usize,
@@ -46,10 +45,8 @@ pub struct Node {
 
 pub async fn get_ast(
     parser: &mut tree_sitter::Parser,
-    maky_ast_path: impl AsRef<Path>,
     path: impl AsRef<Path>,
 ) -> anyhow::Result<(String, Hash, Node, Language)> {
-    let maky_ast_path = maky_ast_path.as_ref();
     let path = path.as_ref();
 
     let language = get_language(
@@ -58,14 +55,6 @@ pub async fn get_ast(
     );
     let code = read_to_string(path).await?;
     let hash = blake3::hash(code.as_bytes());
-    let ast_path = maky_ast_path.join(hash.to_string());
-
-    if ast_path.is_file()
-        && let Ok(ast) = read_to_string(&ast_path).await
-        && let Ok(ast) = Node::deserialize_json(&ast)
-    {
-        return Ok((code, hash, ast, language));
-    }
 
     parser.set_language(
         &match language {

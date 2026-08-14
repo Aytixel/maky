@@ -72,7 +72,6 @@ pub async fn scan_source_files(
     while !next_files.is_empty() {
         let new_source_files = visit_source_files(
             &project_paths.project_path,
-            &project_paths.maky_ast_path,
             include_paths,
             next_files.clone(),
             &mut visited_files,
@@ -93,7 +92,6 @@ pub async fn scan_source_files(
 
 async fn visit_source_files(
     project_path: &Path,
-    maky_ast_path: &Path,
     include_paths: &[PathBuf],
     files: HashSet<PathBuf>,
     visited_files: &mut HashSet<PathBuf>,
@@ -105,11 +103,9 @@ async fn visit_source_files(
 
         visited_files.insert(file.clone());
 
-        let maky_ast_path = maky_ast_path.to_path_buf();
-
         Some(async {
             let mut parser = tree_sitter::Parser::new();
-            let (code, hash, ast, language) = get_ast(&mut parser, maky_ast_path, &file)
+            let (code, hash, ast, language) = get_ast(&mut parser, &file)
                 .await
                 .map_err(|error| anyhow!("`{}` {error}", file.display()))?;
 
