@@ -11,7 +11,7 @@ use crossterm::{
 use tokio::process;
 
 use crate::{
-    commands::{self, COMPILATION_OPTIONS, TARGET_SELECTION, build},
+    commands::{self, ARGUMENTS_SELECTION, COMPILATION_OPTIONS, TARGET_SELECTION, build},
     config::{Target, TargetType},
     helpers::PathTarget,
 };
@@ -19,7 +19,7 @@ use crate::{
 #[derive(clap::Args, Debug, Clone)]
 pub struct Command {
     /// Arguments for the binary or example to run
-    #[arg(help_heading = "Arguments")]
+    #[arg(help_heading = ARGUMENTS_SELECTION)]
     args: Vec<String>,
 
     /// Name of the bin target to run
@@ -47,14 +47,9 @@ impl Command {
         let build_command = build::Command {
             lib: false,
             bins: false,
-            bin: self.bin.clone().into_iter().collect(),
+            bin: Vec::from_iter(self.bin.clone()),
             examples: false,
-            example: self
-                .bin
-                .clone()
-                .and(self.example.clone())
-                .into_iter()
-                .collect(),
+            example: Vec::from_iter(self.example.clone()),
             tests: false,
             test: Vec::new(),
             benches: false,

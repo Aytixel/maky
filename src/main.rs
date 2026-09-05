@@ -25,22 +25,10 @@ struct Command {
 
 #[derive(Subcommand, Debug)]
 enum SubCommand {
-    /// Initialize a new maky package directory
-    Init {
-        #[clap(flatten)]
-        command: commands::init::Command,
-    },
-
     /// Compile a local package and all of its dependencies
     Build {
         #[clap(flatten)]
         command: commands::build::Command,
-    },
-
-    /// Run a binary or example of the local package
-    Run {
-        #[clap(flatten)]
-        command: commands::run::Command,
     },
 
     /// Analyze the current package and report errors, but don't build object files
@@ -53,6 +41,24 @@ enum SubCommand {
     Clean {
         #[clap(flatten)]
         command: commands::clean::Command,
+    },
+
+    /// Initialize a new maky package directory
+    Init {
+        #[clap(flatten)]
+        command: commands::init::Command,
+    },
+
+    /// Run a binary or example of the local package
+    Run {
+        #[clap(flatten)]
+        command: commands::run::Command,
+    },
+
+    /// Run the tests
+    Test {
+        #[clap(flatten)]
+        command: commands::test::Command,
     },
 }
 
@@ -71,11 +77,12 @@ async fn execute_command() -> anyhow::Result<ExitCode> {
     let command = Command::parse();
 
     match command.subcommand {
-        SubCommand::Init { command } => command.execute().await?,
         SubCommand::Build { command } => command.execute().await?,
-        SubCommand::Run { command } => return Ok(command.execute().await?),
         SubCommand::Check { command } => command.execute().await?,
         SubCommand::Clean { command } => command.execute().await?,
+        SubCommand::Init { command } => command.execute().await?,
+        SubCommand::Run { command } => return Ok(command.execute().await?),
+        SubCommand::Test { command } => return Ok(command.execute().await?),
     }
 
     return Ok(ExitCode::SUCCESS);

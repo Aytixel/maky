@@ -5,7 +5,9 @@ pub mod check;
 pub mod clean;
 pub mod init;
 pub mod run;
+pub mod test;
 
+const ARGUMENTS_SELECTION: &str = "Arguments";
 const TARGET_SELECTION: &str = "Target Selection";
 const COMPILATION_OPTIONS: &str = "Compilation Options";
 const MANIFEST_OPTIONS: &str = "Manifest Options";
